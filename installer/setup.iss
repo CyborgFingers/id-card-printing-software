@@ -79,6 +79,9 @@ Type: files; Name: "{userdesktop}\{#AppName}.lnk"
 Type: files; Name: "{userprograms}\{#AppName}.lnk"
 Type: files; Name: "{autodesktop}\{#AppName}.lnk"
 Type: files; Name: "{userstartup}\{#AppName}.lnk"
+; The screens are copied fresh each time, so files a newer version no longer ships don't linger.
+; Nothing is saved here: people, templates and settings are in %LOCALAPPDATA%.
+Type: filesandordirs; Name: "{app}\wwwroot"
 
 [Files]
 ; Prerequisites first: with solid compression that keeps extracting them quick.
