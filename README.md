@@ -12,7 +12,6 @@
 
 <p align="center">
   <a href="https://github.com/CyborgFingers/id-card-printing-software/releases/latest"><img src="https://img.shields.io/github/v/release/CyborgFingers/id-card-printing-software?label=latest%20release&color=00529F" alt="Latest release"></a>
-  <a href="https://github.com/CyborgFingers/id-card-printing-software/releases"><img src="https://img.shields.io/github/downloads/CyborgFingers/id-card-printing-software/total?label=downloads&color=2E74B5" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-1F4D78" alt="Windows 10 and 11">
   <a href="legal/LICENSE.txt"><img src="https://img.shields.io/badge/licence-free%20to%20use-17803D" alt="Licence: free to use"></a>
 </p>
