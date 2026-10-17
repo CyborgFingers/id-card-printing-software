@@ -109,6 +109,18 @@ public class ServiceLogicTests
         Assert.Equal("CR80", AppService.PrintSize(O("""{"size":"custom","mmW":"x"}""")).Name);
     }
 
+    [Fact]
+    public void The_queue_carries_on_after_an_update_unless_someone_paused_it_or_a_card_needs_checking()
+    {
+        Assert.True(AppService.ResumesAfterUpdate(paused: true, pausedForUpdate: true, recovered: 0, justUpdated: true));
+        Assert.True(AppService.ResumesAfterUpdate(true, true, 0, justUpdated: false));    // the folder was already tidied: the saved reason still counts
+        Assert.False(AppService.ResumesAfterUpdate(true, false, 0, true));                // paused by a person before the update
+        Assert.False(AppService.ResumesAfterUpdate(true, true, recovered: 1, true));      // a card to check first
+        Assert.False(AppService.ResumesAfterUpdate(false, true, 0, true));                // not paused at all
+        Assert.True(AppService.ResumesAfterUpdate(true, pausedForUpdate: null, 0, true)); // saved by 3.0.6 or older, just updated
+        Assert.False(AppService.ResumesAfterUpdate(true, null, 0, false));                // saved by an older version, no update: a person's pause
+    }
+
     static readonly StatusSettings Cfg = new("Card printer", false, 10, 10);
 
     [Fact]

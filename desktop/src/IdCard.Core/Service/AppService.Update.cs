@@ -109,7 +109,7 @@ public sealed partial class AppService
         // A new folder each time, inside this account's own data folder.
         var dir = Path.Combine(_o.DataDir, "update-" + Js.Uid(12));
         var file = Path.Combine(dir, setup.Name);
-        string? error = null; bool pausedForUpdate = false;
+        string? error = null;
         try
         {
             if (_o.UpdateFeed == DefaultUpdateFeed && !FromGitHub(setup.Url)) throw new InvalidOperationException("The update isn't on GitHub, so it was not installed.");
@@ -135,7 +135,7 @@ public sealed partial class AppService
             {
                 // A card may have started while it downloaded: never close the program mid-card.
                 if (_worker.Current is not null) return "A card started printing. Wait for it to finish, then update.";
-                if (!_queuePaused) { _queuePaused = true; pausedForUpdate = true; SaveQueue(); }
+                if (!_queuePaused) { _queuePaused = true; _pausedForUpdate = true; SaveQueue(); }   // saved, so the program resumes it when it's back
                 return null;
             });
             error ??= _o.RunInstaller!(file);
@@ -147,7 +147,7 @@ public sealed partial class AppService
         await LockedAsync(() =>
         {
             if (error is null) { Log($"Installing update {setup.Name}: the program closes while it installs"); return; }
-            if (pausedForUpdate && !_disposed) { _queuePaused = false; SaveQueue(); Kick(); }
+            if (_pausedForUpdate && !_disposed) { _queuePaused = false; _pausedForUpdate = false; SaveQueue(); Kick(); }
             _installing = false; _update["installing"] = false; Broadcast("update", _update);
             Log("Update failed: " + error);
         });
