@@ -36,7 +36,8 @@ const refused = (p, status) => assert.rejects(p, e => e.status === status);
   await refused(admin.call('POST', '/api/fields', { label: 'Position' }), 400);
   step('person fields added; built-in names refused');
 
-  const c = await admin.call('POST', '/api/clients', { name: `API check ${Date.now()}`, copyTemplate: true });
+  const tpl = (await admin.call('GET', '/api/state')).designs[0] || await admin.call('POST', '/api/designs', { name: 'API check card' });
+  const c = await admin.call('POST', '/api/clients', { name: `API check ${Date.now()}`, templateId: tpl.id, copyTemplate: true });
   const p1 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Ana', lastName: '=Tūhoe', extra: { [exp.key]: '2027-03-31' } });
   const p2 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Ben', lastName: 'Ngata', extra: { [num.key]: 'TYPED-1' } });
   assert.equal(p1.extra[exp.key], '2027-03-31');

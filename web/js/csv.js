@@ -52,16 +52,18 @@ export function readPeople(text, custom = []) {
     // No recognised header row: assume First Name, Last Name, ID Photo order.
     fi = 0; li = 1; pi = 2; body = rows; warning = 'No header row found, so columns were read as First Name, Last Name, ID Photo.';
   }
+  // Exports put ' in front of values starting with = + - or @ (so spreadsheets don't run them): take it off again.
+  const cell = (r, i) => i >= 0 ? (r[i] || '').trim().replace(/^'(?=[=+\-@])/, '') : '';
   const people = body.map((r, i) => ({
     row: i + 1,
-    firstName: (r[fi] || '').trim(),
-    lastName: li >= 0 ? (r[li] || '').trim() : '',
-    photoFile: pi >= 0 ? (r[pi] || '').trim() : '',
-    staffId: si >= 0 ? (r[si] || '').trim() : '',
-    position: poi >= 0 ? (r[poi] || '').trim() : '',
-    title: ti >= 0 ? (r[ti] || '').trim() : '',
-    address: ai >= 0 ? (r[ai] || '').trim() : '',
-    ...Object.fromEntries(ci.map(([f, i]) => { const v = (r[i] || '').trim(); return [f.key, f.type === 'date' ? isoDate(v) : v]; })),
+    firstName: cell(r, fi),
+    lastName: cell(r, li),
+    photoFile: cell(r, pi),
+    staffId: cell(r, si),
+    position: cell(r, poi),
+    title: cell(r, ti),
+    address: cell(r, ai),
+    ...Object.fromEntries(ci.map(([f, i]) => { const v = cell(r, i); return [f.key, f.type === 'date' ? isoDate(v) : v]; })),
   }));
   return { people, warning };
 }

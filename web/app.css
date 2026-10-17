@@ -287,6 +287,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl .acts { display: flex; gap: 4px; justify-content: flex-end; }
 .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
 .empty svg { width: 44px; height: 44px; stroke: #B5C3D1; fill: none; stroke-width: 1.4; margin-bottom: 8px; }
+.empty .btn svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; margin-bottom: 0; }
 .empty b { display: block; color: var(--ink-2); font-size: 15px; margin-bottom: 4px; }
 .toolbar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--line-2); }
 .counts { display: flex; gap: 8px; flex-wrap: wrap; }

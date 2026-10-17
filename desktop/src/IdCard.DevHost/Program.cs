@@ -19,6 +19,7 @@ try
         WebRoot = Environment.GetEnvironmentVariable("IDCARD_WEBROOT") ?? Path.Combine(AppContext.BaseDirectory, "wwwroot"),
         GetDbKey = _ => key,
         KeyProtection = "Test key (not Windows)",
+        Version = (typeof(ServiceHost).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false).FirstOrDefault() as System.Reflection.AssemblyInformationalVersionAttribute)?.InformationalVersion.Split('+')[0] ?? "0.0.0",
         Port = int.TryParse(Environment.GetEnvironmentVariable("IDCARD_PORT"), out var port) ? port : null,
         UpdateFeed = Environment.GetEnvironmentVariable("IDCARD_UPDATE_FEED"),
         Stopped = () => stopped.TrySetResult(),

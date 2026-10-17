@@ -26,12 +26,17 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
     if (!me.user.isDefaultPassword) throw new Error('Sign-in failed with SMOKE_PASS and with the default password');
     await call('GET', '/api/state').then(() => { throw new Error('API usable before the default password was changed'); }, e => { if (!/ 403 /.test(e.message)) throw e; });
     await call('PUT', '/api/auth/account', { newPassword: PASS }); step('default password changed');
+    const fresh = await call('GET', '/api/state');   // a new install starts blank
+    if (fresh.designs.length || fresh.clients.length) throw new Error(`A new install should be empty, but has ${fresh.designs.length} template(s) and ${fresh.clients.length} client(s)`);
+    step('new install is blank: no templates, no clients');
   }
   step('signed in');
   await call('POST', '/api/license/accept'); step('licence accepted');
   await call('PUT', '/api/config', { simulate: true, simSeconds: 2 }); step('simulator on');
   const name = `Smoke test ${Date.now()}`;
-  const c = await call('POST', '/api/clients', { name, copyTemplate: true }); step(`client created: ${c.name}`);
+  // A new install has no templates: make one if needed.
+  const tpl = (await call('GET', '/api/state')).designs[0] || await call('POST', '/api/designs', { name: 'Smoke test card' });
+  const c = await call('POST', '/api/clients', { name, templateId: tpl.id, copyTemplate: true }); step(`client created: ${c.name}`);
   const p = await call('POST', `/api/clients/${c.id}/people`, { firstName: 'Smoke', lastName: 'Test', staffId: 'S-1' }); step('person added');
   const st = await call('GET', '/api/state');
   const d = st.designs.find(x => x.id === c.defaultDesignId);

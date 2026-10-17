@@ -72,7 +72,6 @@ internal sealed partial class Routes
         router.Add("DELETE", "/api/designs/:id", r =>
         {
             var d = app.FindDesign(r.P["id"]); if (d is null) return Bad("Template not found", 404);
-            if (app.Designs.Count <= 1) return Bad("You need at least one card template.");
             var did = Js.ToStr(d["id"]); var map = app.AssignmentsByClient();
             var users = app.Db.Rows(AppService.ClientsSql).Where(c => map.GetValueOrDefault((string)c["id"]!, []).Contains(did)).ToList();
             if (users.Count > 0) return Bad($"This template is used by {string.Join(", ", users.Select(c => (string)c["name"]!))}. Remove it from {(users.Count == 1 ? "that client" : "those clients")} first.");

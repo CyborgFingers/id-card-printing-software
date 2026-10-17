@@ -81,13 +81,13 @@ internal sealed partial class Routes
         {
             var c = app.ClientRow(r.Query("clientId") ?? "");
             var used = new HashSet<string> { "firstName", "lastName", "photo" };
-            if (c is not null) { foreach (var id in app.AssignmentsByClient().GetValueOrDefault((string)c["id"]!, [])) if (app.FindDesign(id) is { } d) used.UnionWith(app.DesignFields(d)); }
-            else used.UnionWith(AppService.PersonFields);
             var custom = app.CustomFields.OfType<JsonObject>().ToList();
-            if (c is null) used.UnionWith(custom.Select(f => Js.ToStr(f["key"])));
+            var designs = c is null ? [] : app.AssignmentsByClient().GetValueOrDefault((string)c["id"]!, []).Select(app.FindDesign).OfType<JsonObject>().ToList();
+            if (designs.Count > 0) foreach (var d in designs) used.UnionWith(app.DesignFields(d));
+            else { used.UnionWith(AppService.PersonFields); used.UnionWith(custom.Select(f => Js.ToStr(f["key"]))); }   // no template yet: every detail
             var cols = AppService.PersonFields.Where(used.Contains).Select(f => AppService.CsvHeaders[f])
                 .Concat(custom.Where(f => used.Contains(Js.ToStr(f["key"]))).Select(f => Js.ToStr(f["label"]))).Append(AppService.CsvHeaders["photo"]);
-            var fname = c is not null ? $"{(Regex.Replace((string)c["name"]!, "[^A-Za-z0-9_ -]+", "").Trim() is { Length: > 0 } n ? n : "Client")} - Import Template.csv" : "ID-Card-Import-Template.csv";
+            var fname = c is not null ? $"{FileNamePart((string)c["name"]!)} - Import Template.csv" : "ID-Card-Import-Template.csv";
             return Csv([cols], fname);
         });
     }

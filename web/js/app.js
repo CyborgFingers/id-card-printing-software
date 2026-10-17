@@ -339,6 +339,12 @@ async function loadState(remount = true) {
 
 
 // Shared: queue a set of rendered cards as one batch.
+// Printed by Settings > Print a test card when there are no templates yet: an outline and a label.
+const TEST_CARD = { id: null, name: 'Test card', card: { w: 638, h: 1013, size: 'CR80', mmW: 53.98, mmH: 85.6 }, front: { background: null, bgColor: '#ffffff' }, back: { enabled: false, background: null, bgColor: '#ffffff' },
+  elements: [
+    { id: 'tc1', field: 'box', side: 'front', x: 24, y: 24, w: 590, h: 965, noFill: true, fill: '#00529F', radius: 28, borderWidth: 6, borderColor: '#00529F' },
+    { id: 'tc2', field: 'text', side: 'front', x: 44, y: 430, w: 550, h: 90, text: 'Test card', font: 'Fira Sans', weight: 700, size: 76, minSize: 20, color: '#00529F', align: 'center', valign: 'middle', uppercase: true, letterSpacing: 2, lineHeight: 1.15, rotate: 0 },
+    { id: 'tc3', field: 'text', side: 'front', x: 44, y: 530, w: 550, h: 50, text: 'ID Card Printing Software Free', font: 'Fira Sans', weight: 500, size: 30, minSize: 12, color: '#1F4D78', align: 'center', valign: 'middle', uppercase: false, letterSpacing: 0, lineHeight: 1.15, rotate: 0 }] };
 async function queueCards({ name, source, client, design, people, onProgress, isCancelled, sides }) {
   const hasBack = printsBack(design);
   const b = await api('POST', '/api/queue/batches', { name, source, clientId: client ? client.id : null, designId: design.id, designName: design.name, hasBack, sides: sides || defaultSides(), expected: people.length });
@@ -401,9 +407,10 @@ const clampN = (v, m) => Math.max(-m, Math.min(m, v));
 // ======================================================================
 const clientById = (id) => S.clients.find(c => c.id === id);
 const clientDesigns = (cid) => { const ids = clientById(cid)?.templateIds || []; return S.designs.filter(d => ids.includes(d.id)); };
-const clientDefaultDesign = (c) => (c && (clientDesigns(c.id).find(d => d.id === c.defaultDesignId) || clientDesigns(c.id)[0])) || S.designs[0];
+const clientDefaultDesign = (c) => (c && (clientDesigns(c.id).find(d => d.id === c.defaultDesignId) || clientDesigns(c.id)[0])) || null;
 // The person details a client needs: every field used by any of its templates.
-const clientFields = (c) => { const f = new Set(['firstName', 'lastName']); for (const d of clientDesigns(c.id)) designFields(d).forEach(x => f.add(x)); return [...PERSON_FIELDS, ...customFields()].filter(x => f.has(x)); };
+const clientFields = (c) => { const ds = clientDesigns(c.id); if (!ds.length) return [...PERSON_FIELDS, ...customFields()];   // no template yet: every detail
+  const f = new Set(['firstName', 'lastName']); for (const d of ds) designFields(d).forEach(x => f.add(x)); return [...PERSON_FIELDS, ...customFields()].filter(x => f.has(x)); };
 const fieldLabel = (f) => fieldInfo(f).label;
 // A person's value for a built-in or custom field, as shown in lists (dates as DD/MM/YYYY).
 const pv = (p, f) => { const v = PERSON_FIELDS.includes(f) ? p[f] : (p.extra || {})[f]; return fieldInfo(f).type === 'date' ? formatDate(v, 'DD/MM/YYYY') : (v || ''); };
@@ -469,18 +476,18 @@ function clientModal(existing) {
 
   modal({ title: existing ? 'Edit client' : 'New client', wide: false,
     body: `<div class="stack" style="gap:14px">
-      <label class="f">Client name<input class="input" id="mName" value="${esc(c.name || '')}" autocomplete="off" placeholder="e.g. Wellington Regional Council"></label>
+      <label class="f">Client name<input class="input" id="mName" value="${esc(c.name || '')}" autocomplete="off" placeholder="Company or organisation name"></label>
       <div class="grid2"><label class="f">Contact name<input class="input" id="mContact" value="${esc(c.contactName || '')}"></label><label class="f">Phone<input class="input" id="mPhone" value="${esc(c.contactPhone || '')}"></label></div>
       <label class="f">Email<input class="input" id="mEmail" type="email" value="${esc(c.contactEmail || '')}"></label>
       <label class="f">Notes<textarea class="input" id="mNotes" rows="3">${esc(c.notes || '')}</textarea></label>
-      ${existing ? '' : `<label class="f">Card template<select class="input" id="mTpl">${S.designs.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select></label>
+      ${existing || !S.designs.length ? '' : `<label class="f">Card template<select class="input" id="mTpl">${S.designs.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select></label>
       <label class="check" style="border:0;padding:0"><input type="checkbox" id="mCopy" checked style="width:18px;height:18px;accent-color:var(--brand)"><div><b>Make a separate copy for this client</b><span>Changes to their card won't affect other clients.</span></div></label>`}</div>`,
     actions: [{ label: 'Cancel' }, { label: existing ? 'Save' : 'Create client', kind: 'primary', onClick: async (m) => {
       const body = { name: $('#mName', m).value, contactName: $('#mContact', m).value, contactPhone: $('#mPhone', m).value, contactEmail: $('#mEmail', m).value, notes: $('#mNotes', m).value };
       if (!body.name.trim()) { toast('Enter the client\'s name', 'err'); $('#mName', m).focus(); return false; }
       try {
         if (existing) { await api('PUT', `/api/clients/${existing.id}`, body); toast('Client saved', 'ok'); }
-        else { body.templateId = $('#mTpl', m).value; body.copyTemplate = $('#mCopy', m).checked; const r = await api('POST', '/api/clients', body); await refreshLists(); toast(`Created ${r.name}`, 'ok'); location.hash = `#/clients/${r.id}/people`; }
+        else { if ($('#mTpl', m)) { body.templateId = $('#mTpl', m).value; body.copyTemplate = $('#mCopy', m).checked; } const r = await api('POST', '/api/clients', body); await refreshLists(); toast(`Created ${r.name}`, 'ok'); location.hash = `#/clients/${r.id}/people`; }
       } catch (e) { toast(e.message, 'err'); return false; }
     } }],
     onMount: (m) => $('#mName', m).focus() });
@@ -566,18 +573,19 @@ const peopleTab = {
     const shown = (SHOW[st.show] || SHOW.all)[1];
     const list = st.rows.filter(p => shown(p) && (!q || [p.firstName, p.lastName, ...cols.map(f => pv(p, f))].join(' ').toLowerCase().includes(q)));
     for (const id of [...st.sel]) if (!st.rows.some(p => p.id === id)) st.sel.delete(id);
-    const d = S.designs.find(x => x.id === st.designId); const hasBack = printsBack(d);
+    const d = S.designs.find(x => x.id === st.designId); const hasBack = printsBack(d); const noTpl = !d;
     if (!hasBack) st.sides = 'front';
     const n = st.sel.size;
     const y = $('.tbl-wrap', box)?.scrollTop;   // repainting must not jump back to the top
     box.innerHTML = `<div class="toolbar">
         <label class="f" style="flex:1 1 200px">Search<input class="input" id="pQ" placeholder="Name${cols.length ? ', ' + esc(cols.map(f => fieldLabel(f).toLowerCase()).join(', ')) : ''}" value="${esc(st.q)}"></label>
         <label class="f" style="flex:0 1 170px">Show<select class="input" id="pShow">${Object.entries(SHOW).map(([k, [l]]) => `<option value="${k}" ${st.show === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="f" style="flex:1 1 180px">Card template<select class="input" id="pDesign">${designOptionsFor(c.id, st.designId)}</select></label>
+        ${noTpl ? '' : `<label class="f" style="flex:1 1 180px">Card template<select class="input" id="pDesign">${designOptionsFor(c.id, st.designId)}</select></label>`}
         ${hasBack ? `<div class="f" style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto"><span style="font-size:12.5px;font-weight:700;color:var(--ink-2)">Sides</span>${sidesSeg('pSides', st.sides, hasBack)}</div>` : ''}
         <span class="sp"></span>
-        ${n ? `<button class="btn danger" id="pDel">${ICON.trash}Delete ${n}</button><button class="btn" id="pProof" title="A page of these cards at actual size, to print or save as PDF for the client to check">${ICON.doc}Proof sheet</button>` : ''}
-        <button class="btn primary lg" id="pPrint" ${n ? '' : 'disabled'}>${ICON.print}${n ? `Print ${plural(n, 'card')}` : 'Select people to print'}</button></div>
+        ${n ? `<button class="btn danger" id="pDel">${ICON.trash}Delete ${n}</button>${noTpl ? '' : `<button class="btn" id="pProof" title="A page of these cards at actual size, to print or save as PDF for the client to check">${ICON.doc}Proof sheet</button>`}` : ''}
+        ${noTpl ? (isAdmin() ? `<a class="btn primary lg" href="#/clients/${c.id}/templates">${ICON.plus}Add a card template</a>` : '<span class="chip warn">No card template yet</span>')
+          : `<button class="btn primary lg" id="pPrint" ${n ? '' : 'disabled'}>${ICON.print}${n ? `Print ${plural(n, 'card')}` : 'Select people to print'}</button>`}</div>
       <div class="tbl-wrap" style="max-height:64vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="pAll" aria-label="Select all" ${list.length && list.every(p => st.sel.has(p.id)) ? 'checked' : ''}></th><th>Photo</th><th>Name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Last printed</th><th>Cards</th><th></th></tr></thead>
       <tbody>${list.map(p => `<tr data-id="${p.id}" class="${st.sel.has(p.id) ? 'sel' : ''}"><td><input type="checkbox" data-sel ${st.sel.has(p.id) ? 'checked' : ''} aria-label="Select ${esc(p.firstName)} ${esc(p.lastName)}"></td>
         <td>${p.hasPhoto ? `<img class="thumb" src="${photoUrl(p)}" alt="" loading="lazy">` : `<div class="thumb noph">${esc(initials(p.firstName + ' ' + p.lastName))}</div>`}</td>
@@ -587,7 +595,7 @@ const peopleTab = {
       <div class="hint" style="padding:12px 20px">${plural(st.rows.length, 'person')}${q ? ` · ${list.length} shown` : ''}${n ? ` · ${n} selected` : ''}</div>`;
     if (y) $('.tbl-wrap', box).scrollTop = y;
     $('#pQ').oninput = e => { st.q = e.target.value; const pos = e.target.selectionStart; this.paint(); const i = $('#pQ'); i.focus(); i.setSelectionRange(pos, pos); };
-    $('#pDesign').onchange = e => { st.designId = e.target.value; this.paint(); };
+    $('#pDesign') && ($('#pDesign').onchange = e => { st.designId = e.target.value; this.paint(); });
     $('#pShow').onchange = e => { st.show = e.target.value; this.paint(); };
     $('#pProof') && ($('#pProof').onclick = () => proofSheet(c, st.rows.filter(p => st.sel.has(p.id)), S.designs.find(x => x.id === st.designId) || clientDefaultDesign(c), st.sides));
     if ($('#pSides')) bindSeg('pSides', s => { st.sides = s; });
@@ -597,8 +605,9 @@ const peopleTab = {
       $('[data-sel]', tr).onchange = e => { e.target.checked ? st.sel.add(p.id) : st.sel.delete(p.id); this.paint(); };
       $('[data-edit]', tr).onclick = () => personModal(c, p);
       $('[data-print]', tr).onclick = () => printPeople(c, [p], { designId: st.designId, sides: st.sides });
+      if (noTpl) $('[data-print]', tr).remove();
     });
-    $('#pPrint').onclick = () => printPeople(c, st.rows.filter(p => st.sel.has(p.id)), { designId: st.designId, sides: st.sides });
+    $('#pPrint') && ($('#pPrint').onclick = () => printPeople(c, st.rows.filter(p => st.sel.has(p.id)), { designId: st.designId, sides: st.sides }));
     $('#pDel') && ($('#pDel').onclick = async () => {
       if (!(await confirmBox(`Delete ${plural(n, 'person')}?`, 'Their details and photos are removed.', 'Delete', 'danger'))) return;
       try { await api('POST', '/api/people/delete', { ids: [...st.sel] }); st.sel.clear(); toast('Deleted'); this.reload(); } catch (e) { toast(e.message, 'err'); }
@@ -630,14 +639,14 @@ function personModal(c, p) {
       <label class="f">Notes<textarea class="input" id="eNotes" rows="2">${esc(st.notes)}</textarea></label>
       ${p ? `<div class="f"><span>Card</span><div class="row" style="gap:10px;flex-wrap:wrap"><select class="input" id="eStatus" style="max-width:190px">${[['active', 'Active'], ['lost', 'Lost or stolen'], ['returned', 'Returned']].map(([k, l]) => `<option value="${k}" ${p.cardStatus === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="hint">${p.printCount ? `${plural(p.printCount, 'card')} printed, last ${fmtDateTime(p.lastPrintedAt)}` : 'No card printed yet'}</span></div><div id="eHist" class="stack" style="gap:4px"></div></div>` : ''}</div>
-      <div class="cardview"><span class="lbl">${esc(d?.name || 'Card')}</span><canvas id="eCv" style="width:${d && d.card.w > d.card.h ? 330 : 240}px"></canvas></div></div>`,
+      ${d ? `<div class="cardview"><span class="lbl">${esc(d.name)}</span><canvas id="eCv" style="width:${d.card.w > d.card.h ? 330 : 240}px"></canvas></div>` : ''}</div>`,
     actions: [
       ...(p ? [{ label: 'Delete', kind: 'danger', onClick: async () => { if (!(await confirmBox('Delete this person?', 'Their details and photo are removed.', 'Delete', 'danger'))) return false; await api('POST', '/api/people/delete', { ids: [p.id] }); toast('Deleted'); peopleTab.reload(); } }] : []),
       { label: 'Cancel' },
       { label: 'Save', onClick: () => save(false) },
-      { label: 'Save and print', kind: 'primary', onClick: () => save(true) }] });
+      ...(d ? [{ label: 'Save and print', kind: 'primary', onClick: () => save(true) }] : [])] });
   const el = m.el; const cv = $('#eCv', el);
-  const draw = () => drawCard(cv, d, 'front', { ...st, ...st.extra, firstName: st.firstName || 'First', lastName: st.lastName || 'Last name', photo: st.img, adj: st.adj });
+  const draw = () => cv && drawCard(cv, d, 'front', { ...st, ...st.extra, firstName: st.firstName || 'First', lastName: st.lastName || 'Last name', photo: st.img, adj: st.adj });
   (async () => { if (p?.hasPhoto) { st.img = await loadImage(photoUrl(p)); } draw(); })();
   $('#eFirst', el).oninput = e => { st.firstName = e.target.value; draw(); };
   $('#eLast', el).oninput = e => { st.lastName = e.target.value; draw(); };
@@ -695,6 +704,7 @@ async function printPeople(c, people, opts) {
 async function queuePeople(c, people, { designId, sides }) {
   if (!people.length) return;
   const d = S.designs.find(x => x.id === designId) || clientDefaultDesign(c);
+  if (!d) { toast(`${c.name} has no card template yet`, 'err'); return; }
   if (!printsBack(d)) sides = 'front';
   const flagged = people.filter(p => cardState(p) && !/Expires/.test(cardState(p)[1]));
   if (flagged.length && sides !== 'back' && !(await confirmBox(flagged.length === 1 ? `${`${flagged[0].firstName} ${flagged[0].lastName}`.trim()}: ${cardState(flagged[0])[1].toLowerCase()}` : `${plural(flagged.length, 'card')} lost, returned or expired`,
@@ -782,7 +792,7 @@ const importer = {
     box.innerHTML = `<div class="toolbar"><b>Review before importing</b><span class="sp"></span>
         <button class="btn primary lg" id="iGo" ${ok.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(ok.length, 'person')}</button></div>
       <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th><th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
-      <tbody>${im.people.map(p => { const [k, l] = this.status(p); return `<tr data-id="${p.id}" class="${p.include ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include ? 'checked' : ''} aria-label="Include"></td><td class="num muted">${p.row}</td>
+      <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>
         <td>${p.url ? `<img class="thumb" src="${p.url}" alt="" loading="lazy">` : '<div class="thumb"></div>'}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
         ${cols.map(f => `<td class="muted" style="max-width:200px;white-space:pre-line">${esc(fieldInfo(f).type === 'date' ? formatDate(p[f], 'DD/MM/YYYY') : p[f]) || '—'}</td>`).join('')}
         <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.file ? p.file.name : p.photoFile) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;
@@ -814,6 +824,7 @@ const importer = {
     if (!added.length) { if (failed.length) modal({ title: 'Nobody was imported', body: notes, actions: [{ label: 'OK', kind: 'primary' }] }); return; }
     toast(`Imported ${plural(added.length, 'person')}${stop ? ' (stopped early)' : ''}`, 'ok');
     peopleTab.st.sel = new Set(added.map(p => p.id)); peopleTab.paint();
+    if (!clientDefaultDesign(c)) { if (failed.length) modal({ title: `Imported ${plural(added.length, 'person')}`, body: notes, actions: [{ label: 'OK', kind: 'primary' }] }); return; }
     modal({ title: `Imported ${plural(added.length, 'person')}`, text: 'Print their cards now?', body: notes,
       actions: [{ label: 'Not now' }, { label: `Print ${plural(added.length, 'card')}`, kind: 'primary', onClick: () => { setTimeout(() => printPeople(c, added, { designId: peopleTab.st.designId, sides: peopleTab.st.sides }), 30); } }] });
   },
@@ -946,6 +957,10 @@ VIEWS.templates = {
   },
   paint() {
     const el = this.el; if (!el || !document.body.contains(el)) return;
+    if (!S.designs.length) {
+      el.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card templates yet</b><div class="row" style="justify-content:center;margin-top:16px"><button class="btn primary" id="tFirst">${ICON.plus}Create your first template</button></div></div></div>`;
+      $('#tFirst').onclick = () => newTemplateModal(); return;
+    }
     el.innerHTML = `<div class="tgrid">${S.designs.map(d => {
       const users = S.clients.filter(c => (c.templateIds || []).includes(d.id));
       return `<a class="tcard card" href="#/templates/${d.id}"><div class="tcard-v"><canvas data-thumb="${d.id}"></canvas>${d.back?.enabled ? `<canvas data-thumb="${d.id}" data-side="back"></canvas>` : ''}</div>
@@ -984,6 +999,10 @@ function clientTemplatesTab(root, top, c) {
       } }] });
   };
   const list = clientDesigns(c.id);
+  if (!list.length) {
+    root.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card template yet</b><div class="row" style="justify-content:center;margin-top:16px">${S.designs.length ? `<button class="btn" id="ctE1">${ICON.clients}Choose templates</button>` : ''}<button class="btn primary" id="ctE2">${ICON.plus}New template</button></div></div></div>`;
+    $('#ctE1') && ($('#ctE1').onclick = () => $('#ctAssign').click()); $('#ctE2').onclick = () => $('#ctNew').click(); return;
+  }
   root.innerHTML = `<div class="tgrid">${list.map(d => `<div class="tcard card"><div class="tcard-v"><canvas data-thumb="${d.id}"></canvas>${d.back?.enabled ? `<canvas data-thumb="${d.id}" data-side="back"></canvas>` : ''}</div>
       <div class="tcard-b"><div class="row" style="gap:6px"><b>${esc(d.name)}</b>${c.defaultDesignId === d.id ? '<span class="chip info">Default</span>' : ''}</div><span>${cardLabel(d.card)} · ${d.back?.enabled ? 'Front and back' : 'Front only'}</span>
       <div class="row" style="gap:4px;margin-top:8px">${fieldChips(d)}</div>
@@ -1183,7 +1202,7 @@ ${accountCard(c, true)}
     $('#cTest').onclick = async () => {
       if (printing) return;
       printing = true;
-      const d = S.designs.find(x => x.id === 'standard') || S.designs[0];
+      const d = S.designs[0] || TEST_CARD;
       try { await queueCards({ name: 'Test card', source: 'test', client: null, design: d, sides: printsBack(d) && S.config.backMethod !== 'manual' ? 'both' : 'front', people: [{ firstName: 'Test', lastName: 'Card', img: null, adj: {} }] }); toast('Test card sent to the queue', 'ok'); } catch (e) { toast(e.message, 'err'); } finally { printing = false; }
     };
     $('#cBackup').onclick = () => backupModal();

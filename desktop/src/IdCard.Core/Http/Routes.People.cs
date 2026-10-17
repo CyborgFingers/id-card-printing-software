@@ -21,11 +21,12 @@ internal sealed partial class Routes
             var name = Str(b["name"], 120); if (name.Length == 0) return Bad("Enter the client's name.");
             if (app.Db.Rows("SELECT name FROM clients").Any(c => string.Equals((string?)c["name"], name, StringComparison.OrdinalIgnoreCase))) return Bad("A client with that name already exists.");
             var id = "c" + Js.Uid(9); var t = Now();
-            var baseD = app.FindDesign(Js.AsString(b["templateId"])) ?? app.Designs[0];
-            var tplId = Js.ToStr(baseD["id"]);
+            // A new install has no templates yet: the client starts without one.
+            var baseD = app.FindDesign(Js.AsString(b["templateId"])) ?? app.Designs.FirstOrDefault();
+            string? tplId = baseD is null ? null : Js.ToStr(baseD["id"]);
             app.Db.Tx(() =>
             {
-                if (Js.Truthy(b["copyTemplate"]))
+                if (baseD is not null && Js.Truthy(b["copyTemplate"]))
                 {
                     // A separate copy, so this client's card can change without affecting anyone else.
                     var tpl = (JsonObject)baseD.DeepClone(); tpl["id"] = "d" + Js.Uid(9); tpl["name"] = $"{name} card"; tpl["updatedAt"] = t;
@@ -33,7 +34,7 @@ internal sealed partial class Routes
                 }
                 app.Db.Exec("INSERT INTO clients(id, name, contact_name, contact_email, contact_phone, notes, default_design_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     id, name, Str(b["contactName"]), Str(b["contactEmail"]), Str(b["contactPhone"], 60), Str(b["notes"], 2000), tplId, t, t);
-                app.Db.Exec("INSERT OR IGNORE INTO client_designs(client_id, design_id) VALUES (?, ?)", id, tplId);
+                if (tplId is not null) app.Db.Exec("INSERT OR IGNORE INTO client_designs(client_id, design_id) VALUES (?, ?)", id, tplId);
             });
             Log($"Client created: {name} (by {r.User.Username})");
             app.Broadcast("designs", DesignsJson()); app.BroadcastClients(); return Ok(app.ClientJson(id));
@@ -198,8 +199,7 @@ internal sealed partial class Routes
                     .Concat([CardStatus.GetValueOrDefault(status, status), Js.ToStr(p["notes"]), Js.ToStr(p["photoName"]), Js.ToStr(p["printCount"]),
                         Js.ParseIso(Js.AsString(p["lastPrintedAt"])) is { } lp ? NzDateTime(lp) : ""]));
             }
-            var fname = Regex.Replace((string)c["name"]!, "[^A-Za-z0-9_ -]+", "").Trim() is { Length: > 0 } fn ? fn : "Client";
-            return Csv(rows, $"{fname} - People.csv");
+            return Csv(rows, $"{FileNamePart((string)c["name"]!)} - People.csv");
         });
     }
 
@@ -220,8 +220,21 @@ internal sealed partial class Routes
     static Reply Csv(IEnumerable<IEnumerable<string>> rows, string fileName, bool trailingNewline = true)
     {
         var text = "﻿" + string.Join("\r\n", rows.Select(r => string.Join(",", r.Select(CsvCell)))) + (trailingNewline ? "\r\n" : "");
-        return Reply.Text(text, "text/csv; charset=utf-8", new() { ["Content-Disposition"] = $"attachment; filename=\"{fileName}\"" });
+        return Reply.Text(text, "text/csv; charset=utf-8", new() { ["Content-Disposition"] = Attachment(fileName) });
     }
+
+    /// <summary>A download name: the real name (macrons and all) for current programs, plus a plain-letters
+    /// fallback, since a header can only hold plain text.</summary>
+    static string Attachment(string fileName)
+    {
+        var plain = new string(fileName.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(ch => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+        plain = Regex.Replace(plain, "[^A-Za-z0-9_ .()-]+", "");
+        return $"attachment; filename=\"{plain}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
+    }
+
+    /// <summary>A client's name made safe for a file name (letters, numbers, spaces, - and _).</summary>
+    static string FileNamePart(string name) => Regex.Replace(name, @"[^\p{L}\p{N}_ -]+", "").Trim() is { Length: > 0 } n ? n : "Client";
 
     // ---------------- custom person fields (Settings > Person fields) ----------------
     bool FieldTaken(string label, string? key = null) =>

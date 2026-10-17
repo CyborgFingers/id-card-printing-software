@@ -90,19 +90,6 @@ public sealed partial class AppService
         return o;
     }
 
-    JsonObject StarterDesign()
-    {
-        var asset = PutAsset(File.ReadAllBytes(Path.Combine(WebRoot, "defaults", "weave.png")), "image/png", "weave-default.png");
-        return new JsonObject
-        {
-            ["id"] = "standard", ["name"] = "Standard card", ["version"] = 3, ["updatedAt"] = Js.Now(),
-            ["card"] = CleanCard(null),
-            ["front"] = new JsonObject { ["background"] = asset, ["bgColor"] = "#ffffff" },
-            ["back"] = new JsonObject { ["enabled"] = true, ["background"] = asset, ["bgColor"] = "#ffffff" },
-            ["elements"] = new JsonArray(TextEl("firstName", 39, 100, 560, 66), TextEl("lastName", 39, 165, 560, 66), PhotoEl(120, 275, 398, 571)),
-        };
-    }
-
     /// <summary>Older templates (one name block + one photo box) become field elements.</summary>
     static JsonObject UpgradeDesign(JsonObject d)
     {
@@ -154,7 +141,6 @@ public sealed partial class AppService
             if (u["card"] is not JsonObject c || Js.ToNumber(c["w"]) is not > 0) { u["card"] = new JsonObject { ["w"] = 638, ["h"] = 1013 }; changed = true; }   // older templates were always portrait
             Designs.Add(u);
         }
-        if (Designs.Count == 0) { Designs.Insert(0, StarterDesign()); changed = true; }
         if (changed) SaveDesigns();
     }
 

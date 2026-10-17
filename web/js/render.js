@@ -51,10 +51,10 @@ export const FONTS = ['Fira Sans', 'Manrope', 'Montserrat', 'Roboto', 'Open Sans
 // What a template can place on a card: person details, fixed text and design elements. "sample" is what the builder shows.
 export const FIELDS = {
   photo: { label: 'Photo', kind: 'photo' },
-  firstName: { label: 'First name', kind: 'text', sample: 'Joshua', size: 64 },
-  lastName: { label: 'Last name', kind: 'text', sample: 'Robinson', size: 64 },
-  staffId: { label: 'Staff ID number', kind: 'text', sample: 'WRC-1042', size: 34 },
-  position: { label: 'Position', kind: 'text', sample: 'Security Officer', size: 34 },
+  firstName: { label: 'First name', kind: 'text', sample: 'Alex', size: 64 },
+  lastName: { label: 'Last name', kind: 'text', sample: 'Sample', size: 64 },
+  staffId: { label: 'Staff ID number', kind: 'text', sample: 'ID-1042', size: 34 },
+  position: { label: 'Position', kind: 'text', sample: 'Team Member', size: 34 },
   title: { label: 'Title', kind: 'text', sample: 'Mr', size: 34 },
   address: { label: 'Address', kind: 'multiline', sample: '12 Example Street\nThorndon, Wellington 6011', size: 28 },
   text: { label: 'Text', kind: 'text', sample: 'STAFF', size: 40 },

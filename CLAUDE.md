@@ -47,6 +47,8 @@ Output: `dist/ID-Card-Printing-Software-Free-Setup-<version>.exe`. The version l
 `desktop/Directory.Build.props` (`<Version>`); the installer's AppId must never change.
 Releases: a GitHub release on `CyborgFingers/id-card-printing-software` with the setup attached is
 what installed copies update to (`AppService.UpdateRepo`).
+To release: bump `<Version>`, add `.github/release-notes/vX.Y.Z.md` (shown on the release page and
+behind the app's "What's new" link), commit, push, then push the tag `vX.Y.Z`.
 
 ## Layout
 
