@@ -43,6 +43,8 @@ DefaultDirName={autopf}\{#AppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\legal\LICENSE.txt
 SetupIconFile=..\web\img\app.ico
+WizardImageFile=images\wizard-large-100.png,images\wizard-large-125.png,images\wizard-large-150.png,images\wizard-large-175.png,images\wizard-large-200.png
+WizardSmallImageFile=images\wizard-small-100.png,images\wizard-small-125.png,images\wizard-small-150.png,images\wizard-small-175.png,images\wizard-small-200.png
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
@@ -68,7 +70,7 @@ UninstalledAll=%1 was removed from your computer.%n%nYour people, templates and 
 
 [Tasks]
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: startup; Description: "Start automatically when I sign in to Windows"; GroupDescription: "{cm:AdditionalIcons}"
+Name: startup; Description: "Start automatically when I sign in to Windows"; GroupDescription: "Startup:"
 
 [InstallDelete]
 ; [Icons] makes the ticked shortcuts again. This also replaces the per-user shortcuts the older
@@ -217,6 +219,20 @@ begin
     Result := Result + #13#10#13#10 + '{#AppName} was not installed. Fix the problem above, then run Setup again.';
 end;
 
+{ The Ready page also lists the Microsoft components Setup will install first. }
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  Needed: String;
+begin
+  Needed := '';
+  if not HasDotnet10('Microsoft.WindowsDesktop.App') then Needed := Needed + Space + 'Microsoft .NET 10 Desktop Runtime' + NewLine;
+  if not HasDotnet10('Microsoft.AspNetCore.App') then Needed := Needed + Space + 'Microsoft ASP.NET Core 10 Runtime' + NewLine;
+  if not HasWebView2 then Needed := Needed + Space + 'Microsoft Edge WebView2 Runtime (downloads from Microsoft)' + NewLine;
+  Result := MemoDirInfo;
+  if MemoTasksInfo <> '' then Result := Result + NewLine + NewLine + MemoTasksInfo;
+  if Needed <> '' then Result := Result + NewLine + NewLine + 'Also installs:' + NewLine + Needed;
+end;
+
 function NeedRestart: Boolean;
 begin
   Result := RestartNeeded;
@@ -227,9 +243,12 @@ end;
 procedure StopRunningApp;
 var
   Locator, Service, Processes, Process: Variant;
-  I: Integer;
+  I, Code: Integer;
   Stopped: Boolean;
 begin
+  { First ask it to save and close by itself (it waits up to 10 seconds), then stop anything left. }
+  if FileExists(ExpandConstant('{app}\{#AppExe}')) then
+    Exec(ExpandConstant('{app}\{#AppExe}'), '--exit', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Stopped := False;
   try
     Locator := CreateOleObject('WbemScripting.SWbemLocator');

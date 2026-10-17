@@ -9,12 +9,12 @@ sealed class TrayApp : ApplicationContext
 {
     readonly SynchronizationContext _ui = new WindowsFormsSynchronizationContext();
     readonly NotifyIcon _tray = new();
-    readonly RegisteredWaitHandle _showWait;
+    readonly RegisteredWaitHandle _showWait, _exitWait;
     ServiceHost? _host;
     MainWindow? _window;
     bool _openWhenReady, _exiting;
 
-    public TrayApp(bool openWindow, EventWaitHandle showEvent)
+    public TrayApp(bool openWindow, EventWaitHandle showEvent, EventWaitHandle exitEvent)
     {
         _openWhenReady = openWindow;
         var menu = new ContextMenuStrip();
@@ -25,6 +25,7 @@ sealed class TrayApp : ApplicationContext
         _tray.DoubleClick += (_, _) => ShowWindow();
         _tray.Visible = true;
         _showWait = ThreadPool.RegisterWaitForSingleObject(showEvent, (_, _) => _ui.Post(_ => ShowWindow(), null), null, Timeout.Infinite, false);
+        _exitWait = ThreadPool.RegisterWaitForSingleObject(exitEvent, (_, _) => _ui.Post(_ => Exit(), null), null, Timeout.Infinite, true);   // the uninstaller
         SystemEvents.SessionEnded += (_, _) => { StopService(); _ui.Post(_ => Exit(), null); };   // signing out or shutting down: save first
         // Start once the message loop runs, so a startup failure can end it.
         _ui.Post(_ => _ = Start(), null);
@@ -74,6 +75,7 @@ sealed class TrayApp : ApplicationContext
     protected override void ExitThreadCore()
     {
         _showWait.Unregister(null);
+        _exitWait.Unregister(null);
         _tray.Visible = false;
         _tray.Dispose();
         base.ExitThreadCore();

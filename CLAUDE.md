@@ -167,8 +167,10 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, smoke.mj
    Still to check on the real printer: the driver's own CR80 paper; dual-sided through the flipper and
    how a landscape back lines up; ribbon/film % and card count from the FARGO registry values; printer
    alerts (ribbon out, jam…); barcodes scan; CR79/CR100 on a printer that takes them.
-2. Code signing (setup and program): without it UAC says "unknown publisher" and SmartScreen warns.
-   Then the updater can also check the setup's signature, not only GitHub's SHA-256.
+2. Code signing: decided against (2026-10-17). Josh wants it free: the setup stays unsigned, so the
+   first install shows SmartScreen ("More info" > "Run anyway") and UAC "unknown publisher"; updates
+   through Update now only show UAC. Free routes checked: Microsoft Store (not wanted), open source +
+   SignPath (licence change), winget (command line). NZ individuals can't use Azure Artifact Signing.
 3. Inno Setup licence: free for commercial use, but jrsoftware asks businesses over US$5,000/yr to buy
    one (optional). Josh to decide.
 4. While at the printer: magstripe encoding and the UV (F) panel can be driven from text in the print

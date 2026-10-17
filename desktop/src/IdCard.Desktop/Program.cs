@@ -16,11 +16,13 @@ static class Program
     internal const string Title = AppService.AppName;
     const string MutexName = @"Local\IDCardPrintingSoftwareFree.App";
     const string ShowEventName = @"Local\IDCardPrintingSoftwareFree.Show";
+    internal const string ExitEventName = @"Local\IDCardPrintingSoftwareFree.Exit";
 
     [STAThread]
     static int Main(string[] args)
     {
         if (args.Contains("--reset-admin", StringComparer.OrdinalIgnoreCase)) return ResetAdminSignIn();
+        if (args.Contains("--exit", StringComparer.OrdinalIgnoreCase)) return ExitRunningCopy();
         var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         using var mutex = new Mutex(true, MutexName, out var first);
         if (!first)
@@ -31,12 +33,13 @@ static class Program
             return 0;
         }
         using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        using var exitEvent = new EventWaitHandle(false, EventResetMode.ManualReset, ExitEventName);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => ShowError("Something went wrong.", e.Exception.Message);
-        Application.Run(new TrayApp(!background, showEvent));
+        Application.Run(new TrayApp(!background, showEvent, exitEvent));
         return 0;
     }
 
@@ -62,6 +65,20 @@ static class Program
         RunInstaller = RunInstaller,
         Stopped = stopped,
     };
+
+    /// <summary>"--exit" (used by the uninstaller): asks a running copy to save and close, waiting up to 10 seconds.</summary>
+    static int ExitRunningCopy()
+    {
+        if (!EventWaitHandle.TryOpenExisting(ExitEventName, out var exit)) return 0;   // not running
+        using (exit) exit.Set();
+        for (int i = 0; i < 100; i++)
+        {
+            if (!Mutex.TryOpenExisting(MutexName, out var m)) return 0;
+            m.Dispose();
+            Thread.Sleep(100);
+        }
+        return 1;
+    }
 
     internal static string DataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ID Card Printing Software");
 

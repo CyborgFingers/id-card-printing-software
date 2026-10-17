@@ -68,6 +68,7 @@ fi
 S="$WORK/src"
 mkdir -p "$S/installer/redist" "$S/tools" "$S/legal" "$S/web/img" "$S/desktop" "$S/build"
 cp "$ROOT/installer/setup.iss" "$S/installer/"
+cp -R "$ROOT/installer/images" "$S/installer/"
 cp "$REDIST/windowsdesktop-runtime-$DOTNET_VERSION-win-x64.exe" "$REDIST/aspnetcore-runtime-$DOTNET_VERSION-win-x64.exe" \
    "$REDIST/MicrosoftEdgeWebview2Setup.exe" "$S/installer/redist/"
 cp "$ROOT/tools/build-installer.ps1" "$S/tools/"

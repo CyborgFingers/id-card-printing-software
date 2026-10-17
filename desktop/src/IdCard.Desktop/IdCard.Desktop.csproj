@@ -9,6 +9,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <SelfContained>false</SelfContained>
     <AssemblyName>ID Card Printing Software</AssemblyName>
+    <AssemblyTitle>ID Card Printing Software Free</AssemblyTitle>
     <RootNamespace>IdCard.Desktop</RootNamespace>
     <ApplicationIcon>..\..\..\web\img\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
