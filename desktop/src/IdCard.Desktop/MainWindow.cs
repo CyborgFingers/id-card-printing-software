@@ -12,12 +12,13 @@ sealed class MainWindow : Form
     readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     readonly string _url, _dataDir;
     readonly Action _exit;
-    readonly NotifyIcon _tray;
+    readonly Action<string> _tip;   // a notification from the tray icon
+    string _startHash = "";
     bool _exiting, _toldStillRunning;
 
-    public MainWindow(string url, string dataDir, Action exit, NotifyIcon tray)
+    public MainWindow(string url, string dataDir, Action exit, Action<string> tip)
     {
-        _url = url.TrimEnd('/') + "/"; _dataDir = dataDir; _exit = exit; _tray = tray;
+        _url = url.TrimEnd('/') + "/"; _dataDir = dataDir; _exit = exit; _tip = tip;
         Text = Program.Title;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
@@ -68,7 +69,7 @@ sealed class MainWindow : Form
         };
         core.PermissionRequested += (_, e) =>
         {
-            if (e.PermissionKind == CoreWebView2PermissionKind.Notifications && Ours(e.Uri)) e.State = CoreWebView2PermissionState.Allow;
+            if (e.PermissionKind == CoreWebView2PermissionKind.Notifications) e.State = CoreWebView2PermissionState.Deny;   // the tray icon shows them, even with the window closed
         };
         core.ContextMenuRequested += (_, e) =>
         {
@@ -81,7 +82,14 @@ sealed class MainWindow : Form
             if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.BrowserProcessExited) { CloseForExit(); return; }   // opened again from the notification area
             core.Reload();
         };
-        core.Navigate(_url);
+        core.Navigate(_url + _startHash);
+    }
+
+    /// <summary>Shows a screen, such as "#/queue".</summary>
+    public void Go(string hash)
+    {
+        if (_web.CoreWebView2 is { } core) _ = core.ExecuteScriptAsync($"location.hash = {System.Text.Json.JsonSerializer.Serialize(hash)}");
+        else _startHash = hash;   // still opening
     }
 
     bool Ours(string uri) => uri.StartsWith(_url, StringComparison.OrdinalIgnoreCase) || uri.Equals(_url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
@@ -113,7 +121,7 @@ sealed class MainWindow : Form
             if (!_toldStillRunning)
             {
                 _toldStillRunning = true;
-                _tray.ShowBalloonTip(4000, Program.Title, "Still running, so cards keep printing. Open it again from here.", ToolTipIcon.None);
+                _tip("Still running, so cards keep printing. Open it again from here.");
             }
             return;
         }

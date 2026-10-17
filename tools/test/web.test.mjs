@@ -52,6 +52,15 @@ test('ID photos match the CSV\'s ID column (1 → 1.jpg), leading zeros or not',
   assert.equal(matchPhoto(both, { importId: '7', firstName: '', lastName: '' }).name, '7.jpg');   // an exact name beats a padded one
 });
 
+test('Help topics are built from the current user guide', async () => {
+  const fs = await import('node:fs');
+  const { buildTopics, render, GUIDE, OUT } = await import('../gen-help.mjs');
+  const topics = buildTopics(fs.readFileSync(GUIDE, 'utf8'));   // throws on a link to a missing topic or a topic without a summary
+  assert.ok(topics.length >= 15 && topics.every(t => t.summary && t.html && t.text));
+  assert.equal(fs.readFileSync(OUT, 'utf8'), render(topics), 'docs/USER-GUIDE.md changed: run node tools/gen-help.mjs');
+  assert.ok(!/<(script|img|iframe)/i.test(topics.map(t => t.html).join('')));
+});
+
 test('card dates in each format', () => {
   assert.equal(formatDate('2027-03-31', 'DD/MM/YYYY'), '31/03/2027');
   assert.equal(formatDate('2027-03-31', 'D MMM YYYY'), '31 Mar 2027');
@@ -59,4 +68,18 @@ test('card dates in each format', () => {
   assert.equal(formatDate('2027-03-31', 'MM/YY'), '03/27');
   assert.equal(formatDate('2027-03-31'), '31/03/2027');
   assert.equal(formatDate('not a date', 'MM/YY'), 'not a date');
+});
+
+test('Help search ignores case and accents, needs every word, ranks title matches first', async () => {
+  const { search, snippet } = await import('../../web/js/helpview.js');
+  const { HELP_TOPICS } = await import('../../web/js/help.js');
+  const t0 = HELP_TOPICS[0], word = t0.title.split(' ').find(w => w.length > 4);
+  const ids = (q) => search(q).map(t => t.id);
+  assert.equal(search('  '), null);
+  assert.equal(ids(word.toUpperCase())[0], t0.id);                                                           // a title match ranks first
+  assert.deepEqual(ids(word.replace(/[aeiou]/g, c => ({ a: 'ā', e: 'ē', i: 'ī', o: 'ō', u: 'ū' }[c]))), ids(word));   // "maori" finds "Māori" and the reverse
+  assert.deepEqual(ids('màōrí'), ids('maori'));
+  assert.deepEqual(ids(`${word} zzqxv`), []);                                                                // every word must appear
+  const sw = t0.summary.split(' ').find(w => /^[a-z]{5,}$/i.test(w));
+  assert.match(snippet(search(sw).find(t => t.id === t0.id), [sw.toLowerCase()]), new RegExp(`<mark>${sw}</mark>`, 'i'));
 });

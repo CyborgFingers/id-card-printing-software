@@ -28,6 +28,7 @@ try
         Version = (typeof(ServiceHost).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false).FirstOrDefault() as System.Reflection.AssemblyInformationalVersionAttribute)?.InformationalVersion.Split('+')[0] ?? "0.0.0",
         Port = int.TryParse(Environment.GetEnvironmentVariable("IDCARD_PORT"), out var port) ? port : null,
         UpdateFeed = Environment.GetEnvironmentVariable("IDCARD_UPDATE_FEED"),
+        Notify = (title, message, problem) => Console.WriteLine($"[notification{(problem ? ", problem" : "")}] {title}: {message}"),   // the Windows program shows these from its tray icon
         Stopped = () => stopped.TrySetResult(),
     });
 }

@@ -12,7 +12,7 @@ sealed class TrayApp : ApplicationContext
     readonly RegisteredWaitHandle _showWait, _exitWait;
     ServiceHost? _host;
     MainWindow? _window;
-    bool _openWhenReady, _exiting;
+    bool _openWhenReady, _exiting, _tipOpensQueue;
 
     public TrayApp(bool openWindow, EventWaitHandle showEvent, EventWaitHandle exitEvent)
     {
@@ -23,6 +23,7 @@ sealed class TrayApp : ApplicationContext
         _tray.Text = Program.Title;
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => ShowWindow();
+        _tray.BalloonTipClicked += (_, _) => ShowWindow(_tipOpensQueue ? "#/queue" : null);
         _tray.Visible = true;
         _showWait = ThreadPool.RegisterWaitForSingleObject(showEvent, (_, _) => _ui.Post(_ => ShowWindow(), null), null, Timeout.Infinite, false);
         _exitWait = ThreadPool.RegisterWaitForSingleObject(exitEvent, (_, _) => _ui.Post(_ => Exit(), null), null, Timeout.Infinite, true);   // the uninstaller
@@ -35,7 +36,8 @@ sealed class TrayApp : ApplicationContext
     {
         try
         {
-            _host = await Task.Run(() => ServiceHost.StartAsync(Program.Options(() => _ui.Post(_ => Exit(), null))));
+            _host = await Task.Run(() => ServiceHost.StartAsync(Program.Options(() => _ui.Post(_ => Exit(), null),
+                (title, message, problem) => _ui.Post(_ => ShowTip(title, message, problem ? ToolTipIcon.Warning : ToolTipIcon.Info, true), null))));
         }
         catch (Exception e)
         {
@@ -48,12 +50,21 @@ sealed class TrayApp : ApplicationContext
         if (_openWhenReady) ShowWindow();
     }
 
-    void ShowWindow()
+    void ShowWindow(string? screen = null)
     {
         if (_exiting) return;
         if (_host is null) { _openWhenReady = true; return; }   // still starting: open once ready
-        if (_window is null || _window.IsDisposed) _window = new MainWindow(_host.Url, Program.DataDir, Exit, _tray);
+        if (_window is null || _window.IsDisposed) _window = new MainWindow(_host.Url, Program.DataDir, Exit, m => ShowTip(Program.Title, m, ToolTipIcon.None, false));
+        if (screen is not null) _window.Go(screen);
         _window.ShowAndActivate();
+    }
+
+    /// <summary>A Windows notification from the tray icon. Clicking one about printing opens the print queue.</summary>
+    void ShowTip(string title, string message, ToolTipIcon icon, bool opensQueue)
+    {
+        if (_exiting) return;
+        _tipOpensQueue = opensQueue;
+        _tray.ShowBalloonTip(10000, title, message, icon);
     }
 
     void Exit()

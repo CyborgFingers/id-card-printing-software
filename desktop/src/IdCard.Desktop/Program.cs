@@ -48,7 +48,7 @@ static class Program
     internal static string Version =>
         (Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "3.0.0").Split('+')[0];
 
-    internal static ServiceOptions Options(Action stopped) => new()
+    internal static ServiceOptions Options(Action stopped, Action<string, string, bool> notify) => new()
     {
         DataDir = DataDir,
         WebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot"),
@@ -64,6 +64,7 @@ static class Program
 #endif
         RunInstaller = RunInstaller,
         Stopped = stopped,
+        Notify = notify,
     };
 
     /// <summary>"--exit" (used by the uninstaller): asks a running copy to save and close, waiting up to 10 seconds.</summary>

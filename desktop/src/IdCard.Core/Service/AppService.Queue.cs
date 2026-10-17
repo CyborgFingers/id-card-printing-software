@@ -12,6 +12,7 @@ public sealed partial class AppService
     internal List<JsonObject> Batches { get; set; } = [];
     bool _queuePaused;
     string? _recoveredAt;
+    int _recoveredOnStart, _printedRun;   // cards to check after a restart; cards printed since the queue last emptied
     internal bool QueuePaused { get => _queuePaused; set => _queuePaused = value; }
     internal string? RecoveredAt { get => _recoveredAt; set => _recoveredAt = value; }
 
@@ -45,7 +46,7 @@ public sealed partial class AppService
                     it["error"] = "The app was closed or the PC restarted while this card was printing. Check the printer output, then mark it printed or reprint it.";
                 }
         }
-        if (recovered > 0) { _queuePaused = true; _recoveredAt = Js.Now(); Log($"Recovered queue after restart: {recovered} card(s) need checking"); }
+        if (recovered > 0) { _queuePaused = true; _recoveredAt = Js.Now(); _recoveredOnStart = recovered; Log($"Recovered queue after restart: {recovered} card(s) need checking"); }
         SaveQueue(quiet: true);
     }
 
@@ -83,6 +84,7 @@ public sealed partial class AppService
             b["counts"] = c;
             long N(string k) => (long)Js.ToNumber(c[k]);
             b["status"] = N("printing") + N("sending") + N("attention") > 0 ? "printing"
+                : _queuePaused && N("interrupted") + N("failed") > 0 ? "needs-review"   // e.g. after a restart: a card to check before resuming
                 : N("queued") > 0 ? (N("printed") + N("failed") > 0 ? "printing" : "queued")
                 : N("interrupted") + N("failed") > 0 ? "needs-review"
                 : N("printed") > 0 ? "done" : "cancelled";
@@ -239,7 +241,12 @@ public sealed partial class AppService
                 {
                     if (_disposed) return null;
                     var n = NextItem();
-                    if (n is null) { if (_worker.Phase != "idle") SetWorker("idle", "All cards printed"); return null; }
+                    if (n is null)
+                    {
+                        if (_worker.Phase != "idle") SetWorker("idle", "All cards printed");
+                        if (_printedRun > 0) { Notify("Printing finished", $"{Cards(_printedRun)} printed. The print queue is empty."); _printedRun = 0; }
+                        return null;
+                    }
                     if (_queuePaused) { SetWorker("paused", _recoveredAt is not null ? "Paused after restart: check interrupted cards, then press Resume" : "Queue paused"); return null; }
                     var block = BlockingAlert();
                     if (block is not null && Js.Truthy(Config["pauseOnError"])) { SetWorker("waiting", $"Waiting for printer: {S(block, "title")}"); return (null!, null!); }
@@ -317,6 +324,7 @@ public sealed partial class AppService
             it["status"] = res.MaybeSpooled ? "interrupted" : "failed"; it["error"] = error; it["finishedAt"] = NowIso(); SaveQueue();
             RecordHistory(b, it, res.MaybeSpooled ? "check" : "failed", error); Log($"Failed {label} ({who}): {error}");
             SetWorker("attention", $"Could not send {label}: {error}");
+            Notify(res.MaybeSpooled ? "Check a card" : "A card didn't print", $"{who}: {error}", true);
             if (Js.Truthy(Config["pauseOnError"])) { _queuePaused = true; SaveQueue(); }
             return true;
         });
@@ -380,12 +388,13 @@ public sealed partial class AppService
             it["finishedAt"] = NowIso(); SaveQueue(); RecordHistory(b, it, "check", S(it, "error"));
             SetWorker("attention", $"Check {label} ({who}): printer had a problem during this card");
             if (Js.Truthy(Config["pauseOnError"])) { _queuePaused = true; SaveQueue(); }
+            Notify("Check a card", $"{who}: the printer had a problem while this card was printing. Check it in the print queue, then choose Resume printing.", true);
             return;
         }
         var personId = Js.AsString(it["personId"]);
         var backOnly = S(b, "sides") == "back";
         var was = personId is not null && !backOnly ? (string?)PersonRow(personId)?["card_status"] : null;
-        it["status"] = "printed"; it["finishedAt"] = NowIso(); SaveQueue();
+        it["status"] = "printed"; it["finishedAt"] = NowIso(); SaveQueue(); _printedRun++;
         RecordHistory(b, it, "printed", was == "lost" ? "Replacement for a lost card" : "");
         _ = Task.Delay(3000).ContinueWith(_ => Safe(() => Locked(() => { if (!_disposed) LogSupplies(); })));
         if (personId is not null && !backOnly)

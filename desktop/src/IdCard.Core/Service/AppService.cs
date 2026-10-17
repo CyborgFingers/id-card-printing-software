@@ -42,6 +42,8 @@ public sealed class ServiceOptions
     public string? UpdateFeed { get; init; }
     /// <summary>Starts a downloaded setup program; returns a plain-English error, or null once it has started. Null where updates can't be installed.</summary>
     public Func<string, string?>? RunInstaller { get; init; }
+    /// <summary>Shows a desktop notification (title, message, whether it's a problem): the Windows program's tray icon. Null where there are none.</summary>
+    public Action<string, string, bool>? Notify { get; init; }
 }
 
 public sealed partial class AppService : IDisposable
@@ -101,6 +103,7 @@ public sealed partial class AppService : IDisposable
             Port = o.Port ?? (int)Js.NumOr(Config["port"], 5180);
             _printerStatus = PrinterStatus.Derive(null, StatusCfg());
             MakePrinter();
+            if (_recoveredOnStart > 0) Notify($"{Cards(_recoveredOnStart)} to check", "The program stopped while printing. Open the print queue, check the cards marked Check output, then choose Resume printing.", true);
         });
         if (HasRealPrinter && Js.ToStr(Config["printerName"]).Length == 0 && !Js.Truthy(Config["simulate"])) _ = AutoSelectPrinter();
         _timers.Add(new Timer(_ => Safe(() => Locked(() => { if (!_disposed && !_worker.Running && !_queuePaused && NextItem() is not null) Kick(); })), null, 3000, 3000));
@@ -115,6 +118,14 @@ public sealed partial class AppService : IDisposable
         Log($"{AppName} {Version} started {(Js.Truthy(Config["simulate"]) ? "[SIMULATOR]" : $"[printer: {(Js.ToStr(Config["printerName"]) is { Length: > 0 } n ? n : "not set")}]")}");
         if (!_queuePaused && NextItem() is not null) Kick();
     });
+
+    /// <summary>A desktop notification, when the program can show them and "Desktop notifications" is on. Called on the gate.</summary>
+    void Notify(string title, string message, bool problem = false)
+    {
+        if (_o.Notify is not { } show || !Js.Truthy(Config["notifications"])) return;
+        try { show(title, message, problem); } catch (Exception e) { Log("Notification failed: " + e.Message); }
+    }
+    static string Cards(int n) => $"{n:N0} card{(n == 1 ? "" : "s")}";
 
     /// <summary>For timer and background work: an error is logged instead of ending the program.</summary>
     internal void Safe(Action f)
@@ -323,6 +334,7 @@ public sealed partial class AppService : IDisposable
             {
                 try { Db.Exec("INSERT INTO printer_events(ts, type, code, level, title, detail) VALUES (?, ?, ?, ?, ?, ?)", Js.Now(), "alert", Js.ToStr(a["code"]), Js.ToStr(a["level"]), Js.ToStr(a["title"]), Js.ToStr(a["detail"])); } catch (Exception) { }
                 Log("Printer alert: " + Js.ToStr(a["title"]));
+                if (_worker.Current is not null || NextItem() is not null) Notify(Js.ToStr(a["title"]), Js.ToStr(a["detail"]), true);   // only while there are cards to print
             }
             foreach (var c in prev.Where(c => !alerts.Any(a => Js.ToStr(a["code"]) == c)))
             {

@@ -103,7 +103,9 @@ add their people (or import them from a spreadsheet with their photos) and print
   card counter and an estimate of cards left.
 - **Print history** of every card with the client, batch, template, operator and ribbon level at the time.
 - **Keeps printing in the background**: closing the window leaves the program running in the notification area, and
-  it can start with Windows.
+  it can start with Windows. Windows notifications say when printing finishes or the printer needs attention.
+- **Picks up where it left off**: if the PC restarts or the printer is unplugged mid-batch, the queue shows the one
+  card to check and carries on from the next card when you resume.
 
 ### Security and backups
 - **Administrator and operator accounts.** Operators add people and print; administrators do everything else.
@@ -165,6 +167,13 @@ Everything stays on the PC. People, photos, templates, settings and print histor
 database and are never sent anywhere. The only network connection the program makes is the check for new versions
 against GitHub (and the WebView2 download during setup, if it is missing). There is no account, no telemetry and no
 licence server.
+
+## User guide
+
+The **[user guide](docs/USER-GUIDE.md)** explains every part of the program step by step: templates, clients and
+people, importing with ID photos, printing and the queue, dual-sided cards, printer alerts, users, backups and
+troubleshooting. The same guide is built into the program: choose **Help** in the sidebar, or press **F1**, and search
+it.
 
 ## FAQ
 

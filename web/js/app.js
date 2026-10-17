@@ -4,6 +4,7 @@ import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, PE
 import { createBuilder } from './builder.js';
 import { LICENSE_TEXT, LICENSE_VERSION, SUPPORTED_PRINTERS_TEXT } from './legal.js';
 import { readPeople, buildPhotoIndex, matchPhoto, idKey } from './csv.js';
+import { createHelp } from './helpview.js';
 // (people import uses these)
 
 // ======================================================================
@@ -285,8 +286,9 @@ async function openPrinterDrawer() {
 
 // ---------- alerts: desktop notification + sound ----------
 let lastErrKey = ''; let lastPhase = '';
+const nativeNotices = () => S.platform === 'win32' && S.config.notifications;   // the Windows program's tray icon shows them, with their own sound
 function beep(kind) {
-  if (!S.config.sound) return;
+  if (!S.config.sound || nativeNotices()) return;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const notes = kind === 'done' ? [660, 880] : [880, 660, 880];
@@ -294,7 +296,7 @@ function beep(kind) {
   } catch (e) {}
 }
 function notify(title, body) {
-  if (!S.config.notifications || !('Notification' in window)) return;
+  if (!S.config.notifications || S.platform === 'win32' || !('Notification' in window)) return;
   if (Notification.permission === 'granted') { try { new Notification(title, { body, icon: '/img/mark.png', tag: 'idcard' }); } catch (e) {} }
 }
 function checkAlerts() {
@@ -933,6 +935,7 @@ function printBacks(b) {
 // ======================================================================
 const builder = createBuilder({ S, api, toast, modal, confirmBox, esc, ICON, refreshLists: () => refreshLists(), $, $$, plural });
 const admin = createAdmin({ S, api, toast, modal, confirmBox, esc, ICON, $, $$, fmtDateTime, showLogin, showClosed, onConfig: () => setCustomFields(S.config.customFields) });
+VIEWS.help = createHelp({ $, ICON, parts });
 const thumbsDraw = (root) => $$('[data-thumb]', root).forEach(c => { const d = S.designs.find(x => x.id === c.dataset.thumb); if (d) drawCard(c, d, c.dataset.side || 'front', {}, { samples: true }); });
 const fieldChips = (d) => designFields(d).map(f => `<span class="chip">${esc(fieldLabel(f))}</span>`).join(' ');
 
@@ -1164,7 +1167,7 @@ VIEWS.settings = {
           <label class="f" style="padding:12px 0">Operator name<input class="input" data-c="operatorName" value="${esc(c.operatorName)}" placeholder="Shown in print history"></label>
           ${sw('notifications', 'Desktop notifications')}
           ${sw('sound', 'Alert sounds')}
-          <button class="btn sm" id="cNotif" style="margin-top:6px">Allow notifications</button>
+          ${S.platform === 'win32' ? '' : '<button class="btn sm" id="cNotif" style="margin-top:6px">Allow notifications</button>'}
         </div></div>
 ${accountCard(c, true)}
         <div class="card" id="usCard"></div>
@@ -1200,7 +1203,7 @@ ${accountCard(c, true)}
     $('#cRefresh').onclick = loadPrinters;
     $('#cPrefs') && ($('#cPrefs').onclick = () => api('POST', '/api/printer/preferences').then(() => toast('Opening printing preferences on this PC')));
     $('#cQueue') && ($('#cQueue').onclick = () => api('POST', '/api/printer/queue').then(() => toast('Opening the Windows print queue')));
-    $('#cNotif').onclick = async () => { if (!('Notification' in window)) return toast('Notifications are not available on this PC', 'err'); const r = await Notification.requestPermission(); toast(r === 'granted' ? 'Notifications allowed' : 'Notifications were blocked', r === 'granted' ? 'ok' : 'err'); };
+    $('#cNotif') && ($('#cNotif').onclick = async () => { if (!('Notification' in window)) return toast('Notifications are not available on this PC', 'err'); const r = await Notification.requestPermission(); toast(r === 'granted' ? 'Notifications allowed' : 'Notifications were blocked', r === 'granted' ? 'ok' : 'err'); });
     $('#cTest').onclick = async () => {
       if (printing) return;
       printing = true;
@@ -1329,7 +1332,7 @@ function appearanceCard(box) {
         <button class="btn sm ghost" id="apAuto" ${t.heading ? '' : 'disabled'}>Automatic heading colour</button></div>
       <div class="f"><span>Sidebar</span><div class="seg" id="apSide">${[['light', 'Light'], ['brand', 'Main colour']].map(([k, l]) => `<button type="button" data-s="${k}" class="${(t.sidebar || 'light') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="divider"></div>
-      <label class="f">Company name<input class="input" id="apCo" value="${esc(S.config.companyName || '')}" placeholder="e.g. Acme Security"></label>
+      <label class="f">Company name<input class="input" id="apCo" value="${esc(S.config.companyName || '')}" placeholder="e.g. Example Company"></label>
       <div class="tpl"><div class="logo-prev">${b.logo ? `<img src="${b.logo}" alt="Company logo">` : '<span class="hint">No logo</span>'}</div>
         <div class="row" style="gap:6px"><button class="btn sm" id="apLogo">${ICON.upload}${b.logo ? 'Change logo' : 'Upload logo'}</button>${b.logo ? '<button class="btn sm ghost danger" id="apLogoRm">Remove</button>' : ''}</div></div>
       <input type="file" id="apFile" accept="image/png,image/jpeg,image/webp" hidden>
@@ -1446,6 +1449,7 @@ window.addEventListener('hashchange', () => {
   navigate();
 });
 window.addEventListener('beforeunload', e => { if (builder.isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('keydown', e => { if (e.key === 'F1') { e.preventDefault(); if (S.user) location.hash = '#/help'; } });
 $('#pWidget').onclick = openPrinterDrawer;
 (async () => {
   try { applyBranding(await (await fetch('/api/branding')).json()); } catch (e) {}
