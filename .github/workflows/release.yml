@@ -1,0 +1,45 @@
+# ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved.
+# Builds the setup program and publishes it as a GitHub release when a version tag is pushed
+# (e.g. v3.0.1, matching <Version> in desktop/Directory.Build.props). Installed copies update to
+# the latest release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the tag matches the version
+        shell: pwsh
+        run: |
+          $version = (Select-Xml -Path desktop/Directory.Build.props -XPath '//Version').Node.InnerText
+          if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} doesn't match version $version" }
+
+      - name: Tests
+        run: dotnet test desktop/tests/IdCard.Tests -c Release
+
+      - name: Inno Setup
+        shell: pwsh
+        run: if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+
+      - name: Build the setup
+        shell: pwsh
+        run: ./tools/build-installer.ps1
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create '${{ github.ref_name }}' (Get-ChildItem dist/ID-Card-Printing-Software-Free-Setup-*.exe).FullName --title "ID Card Printing Software Free ${{ github.ref_name }}" --generate-notes

@@ -1,0 +1,207 @@
+# ID Card Printing Software Free
+
+Copyright (c) 2026 Josh McNabb. All rights reserved. Proprietary freeware: see `legal/LICENSE.txt`.
+Free to use; may not be resold, redistributed or reverse engineered. Every source file carries the
+copyright header — keep it on new files.
+
+## What it is
+
+A Windows program for designing and printing ID cards (CR80, CR79, CR100 or a custom size; templates
+are drawn in 300 dpi pixels, CR80 portrait = 638 × 1013 px) on card printers, primarily HID FARGO
+(**HDP5000**, USB). Version 3 is a **64-bit .NET 10 (LTS) desktop program**: it runs the print service
+in-process (ASP.NET Core/Kestrel on `http://localhost:5180`, loopback only), shows the screens in its
+own window (WebView2), sits in the notification area, and prints one card at a time through the
+printer's Windows driver. It is installed by an Inno Setup installer that also installs the .NET 10
+runtimes and the WebView2 Runtime when they're missing, and it updates itself from GitHub releases.
+
+**Printing is Windows only** (System.Drawing.Printing, WMI, FARGO driver registry values, DPAPI).
+`IdCard.DevHost` runs the same service on macOS/Linux with the **simulated printer** so everything
+else can be developed and tested on a Mac.
+
+## Run it on a Mac (development)
+
+```bash
+dotnet build desktop/src/IdCard.DevHost
+IDCARD_DB_KEY=dev-only-key IDCARD_DATA=.devdata IDCARD_WEBROOT=web dotnet desktop/src/IdCard.DevHost/bin/Debug/net10.0/IdCard.DevHost.dll
+open http://localhost:5180
+node tools/smoke.mjs              # second terminal: end-to-end check through the simulator
+node tools/api-check.mjs          # after smoke: fields, card status, export, sizes, roles, automatic backups
+dotnet test desktop/tests/IdCard.Tests   # C# unit tests (scrypt, fields, backups, card sizes, printer status, paper)
+node --test tools/test/           # the screens' own logic (CSV import, card dates)
+```
+- `dotnet` is `~/.dotnet/dotnet` (SDK 10). `IDCARD_WEBROOT=web` serves the screens straight from `web/`
+  (no rebuild after editing them); `IDCARD_PORT` changes the port.
+- Sign in with the default login **admin / admin**. It must choose its own password before anything
+  else works (the API answers 403 until it does), then accept the licence. `tools/smoke.mjs` on a fresh
+  `.devdata/` does this itself and sets the password to `smoke-test-password` (override: `SMOKE_PASS`).
+- `.devdata/` holds the dev database (git-ignored). Delete it to start fresh.
+- Settings → Printer → Simulator mode; the printer drawer (click the sidebar status card) can inject
+  simulated faults (ribbon out, card jam, offline…).
+- `dotnet build desktop/src/IdCard.Desktop` builds the Windows program on the Mac (EnableWindowsTargeting).
+
+## Build the Windows installer
+
+See `tools/build-installer.sh` (Mac: publishes, downloads and SHA512-checks the runtimes, compiles the
+setup on a Windows machine over ssh) and `tools/build-installer.ps1` (on Windows with Inno Setup 6).
+Output: `dist/ID-Card-Printing-Software-Free-Setup-<version>.exe`. The version lives in
+`desktop/Directory.Build.props` (`<Version>`); the installer's AppId must never change.
+Releases: a GitHub release on `CyborgFingers/id-card-printing-software` with the setup attached is
+what installed copies update to (`AppService.UpdateRepo`).
+
+## Layout
+
+```
+desktop/src/IdCard.Core/        The service (net10.0, cross-platform)
+  ServiceHost.cs                Kestrel on localhost, starts/stops the service
+  Service/AppService*.cs        State + config, sign-in, printer events, designs/clients, queue + print
+                                worker, history, supplies, live updates (SSE), backups, updates
+  Service/Js.cs                 JSON helpers with JavaScript's coercions, so stored data keeps its shape
+  Service/Fields.cs             Custom person fields: definitions (config.customFields), values (people.extra), card numbers
+  Service/AutoBackup.cs         Automatic encrypted backups to a folder: when due, write, prune
+  Service/ResetAdmin.cs         Emergency sign-in reset ("--reset-admin")
+  Data/Db.cs                    Encrypted SQLite (SQLCipher 4 via SQLite3 Multiple Ciphers), schema, migrations, backup/restore
+  Security/Passwords.cs         scrypt password hashes (same format as 2.x)
+  Printing/Printing.cs          IPrinter contract, CardSize, PrintJob
+  Printing/PrinterStatus.cs     Raw spooler/FARGO data → plain-English alerts (deriveStatus)
+  Printing/SimPrinter.cs        Simulated printer
+  Printing/CardPaper.cs         Which paper a card prints on (driver paper by name, else custom size)
+  Http/Router.cs                Localhost/Host/Origin checks, route table + auth gates, static files
+  Http/Routes*.cs               The API: auth/users/settings, clients/people/fields, designs/queue, history/backups/updates
+desktop/src/IdCard.Desktop/     The Windows program (WinExe, net10.0-windows, x64): Program (single instance,
+                                --background, --reset-admin, update runner), TrayApp, MainWindow (WebView2),
+                                KeyStore (DPAPI), Printing/WindowsPrinter*.cs (driver printing, WMI monitor)
+desktop/src/IdCard.DevHost/     The service with the simulator on any OS
+desktop/tests/IdCard.Tests/     xUnit tests
+desktop/tools/IdCard.PrintCheck/  Windows printing test harness (publish self-contained, run on a test PC)
+web/                            The screens (served from wwwroot): index.html, app.css, js/app.js (views),
+                                js/admin.js (admin settings), js/builder.js (template builder),
+                                js/render.js (card renderer), js/proof.js, js/csv.js, js/vendor/ (bwip-js)
+web/js/legal.js                 GENERATED by tools/gen-legal.mjs — do not edit
+legal/                          LICENSE.txt, THIRD-PARTY-NOTICES.txt, SUPPORTED-PRINTERS.txt (source of truth)
+installer/                      Inno Setup script; redist/ (downloaded runtimes, git-ignored)
+tools/                          build-installer.sh/.ps1, gen-legal.mjs, smoke.mjs, api-check.mjs, test/
+```
+
+## Key design decisions (keep these)
+
+- **No plain files.** All data and settings live in the one encrypted DB file
+  (`%LOCALAPPDATA%\ID Card Printing Software\id-card-printing-software.db` on Windows). Card images
+  go from the database to the printer driver in memory. Backups are encrypted with a user-chosen
+  backup password (`.idcbak`); the `transfer/` folder only ever holds those briefly. 3.x opens 2.x
+  databases and backups unchanged (same DB path, registry key and cipher settings).
+- **DB key** is tied to the Windows user (DPAPI, `HKCU\Software\ID Card Printing Software\DatabaseKey`).
+  A copied DB can't be opened elsewhere; backups are the way to move data.
+- **One thread at a time**: like the Node service it replaced, all state and the one SqliteConnection
+  are used under the service "gate" (`AppService.Locked`/`LockedAsync`). Request bodies are read
+  before taking it and replies written after; printing, waits and downloads never hold it. Printer
+  events arrive on other threads and are applied on the gate (newest wins).
+- **Print worker** (`PrintOne` in AppService.Queue.cs): one card at a time; marks item `sending` → spools →
+  watches the spooler job + printer busy state → `printed`. Errors pause the queue
+  (`pauseOnError`). Anything mid-print at startup becomes `interrupted` ("Check output") so a card is
+  never printed twice without a person confirming.
+- **Dual-sided**: `cardSides` (single/dual) + `backMethod` (auto = flipper; manual = print fronts,
+  flip stack, "Print backs" creates a back-only batch). The test HDP5000 reports `FlipperModule=0`.
+- **FARGO supplies**: read from `HKLM\SYSTEM\CurrentControlSet\Control\Print\Printers\<name>\PrinterDriverData`
+  (`RibbonInfo`, `FilmInfo` → `PercentRemaining`, `CardCount`, `ConfigInfo`). Real values from the
+  test printer: ribbon part 84051 69%, film 84053 90%, CardCount 542.
+- **Templates** are a library (`designs`), assigned to clients (`client_designs`). Each template has
+  `elements` (photo/firstName/lastName/staffId/position/title/address/text) with x/y/w/h in card px,
+  per side, plus `fields` (ticked fields). A client's people get inputs for the union of fields used
+  by its templates.
+- **Licence acceptance**: `AppService.LicenseVersion` must match `legal/LICENSE.txt`
+  ("Licence version X.Y"). Raising it forces everyone to accept again on next sign-in.
+- **Security**: localhost-only, Host/Origin checks, HttpOnly SameSite=Strict session cookie, scrypt
+  password hashes, sign-in lockout, idle timeout, all API routes require auth except
+  `/api/auth/login`, `/api/auth/me`, `/api/branding`, `/api/branding/logo`. While the account still has
+  the default password only routes marked `defaultOk` (logout, change account) work.
+- **Starter template** id is `'standard'`; `Db.Migrate()` renames the old 2.2 id (also after a restore).
+- **Card sizes**: `design.card` = `{ w, h, size, mmW, mmH }` (`AppService.CleanCard`): CR80 638×1013
+  (kept from 2.x), CR79 615×991, CR100 791×1163, custom 20–150 mm per side; landscape when w > h;
+  a missing size is CR80. A print batch copies the template's `card`; `PrintSize` turns it into the
+  portrait `CardSize` the printer gets (a custom size is named like `60x90mm` so no driver paper
+  matches it by accident). WindowsPrinter uses the driver's paper whose name contains the size name,
+  else a custom paper size, and rotates a landscape image onto the portrait page. Element kinds: person fields, `text`, `photo`, `image`
+  (asset), `box` (shape), `barcode` (bwip-js; `source` = a person field or `text`). Text and barcodes
+  have `rotate` 0/90/180/270; date fields have `dateFormat`. `CleanDesign` validates all of it.
+- **Print resolution**: template coordinates are always 300 dpi pixels. The status monitor reports the
+  driver's `Win32_Printer.HorizontalResolution` as `printer.dpi`; for 600 dpi printers `queueCards`
+  renders at scale 2 (1276×2026), which WindowsPrinter draws to fill the page. 600 dpi card PNGs are
+  about 4× larger in the database until finished batches are cleared.
+- **Any card printer**: printing goes through the printer's own Windows driver. FARGO extras (ribbon/
+  film %, card count, flipper) come from the driver's `PrinterDriverData` and are only shown, warned
+  about or used when reported; wording never names a model except in SUPPORTED-PRINTERS.txt.
+- **Person fields**: definitions in `config.customFields` (keys `cf_…`), changed only via `/api/fields`
+  (so stale clients can't roll back card-number counters). Values in `people.extra`. Dates are stored
+  as YYYY-MM-DD. One date field may be the card expiry.
+- **Roles**: `users.role` is `admin` (NULL = admin, for older accounts) or `operator`. Admin-only
+  routes have `admin: true` or are listed in `Routes.Register` (`AdminOnly`). New and reset accounts
+  get `is_default_password = 1`, which forces a new password (the same gate as admin / admin).
+- **Card status**: `people.card_status` NULL (active), `lost`, `returned`; changes are written to
+  print_history (status lost/returned/active). Printing a card makes it active again.
+- **Automatic backups**: settings in `config.autoBackup`; the password is in `meta.autobackup_password`
+  (never in the config, which is sent to the screens). Checked every 10 minutes.
+- **No console window, no Exit in the tray**: closing the window hides it (printing carries on);
+  Settings > close the program (admin, `/api/service/stop`) ends it. `--background` (the Startup
+  shortcut) starts it without the window; a second launch brings the window forward.
+- **Updates**: `AppService.Update.cs` checks `releases/latest` of `UpdateRepo` (1 min after start, then
+  every 12 h). A release must attach `ID-Card-Printing-Software-Free-Setup-<version>.exe`; GitHub's asset
+  `digest` (sha256) is required and checked after download. "Update now" (admin) runs the setup with
+  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE` (UAC prompt) and the program closes; the setup
+  reopens it. `IDCARD_UPDATE_FEED` overrides the feed URL for testing.
+
+## Gotchas
+
+- The screens rely on exact JSON shapes from the old Node service; `Js.cs` reproduces JavaScript's
+  coercions (`String()`, `Number()`, `!!`, `||`). Keep using it in routes, and run `tools/api-check.mjs`.
+- `Microsoft.Data.Sqlite` binds named parameters only: `Db` rewrites each `?` to `@pN` (outside quotes).
+- CSV responses start with U+FEFF (the BOM spreadsheet programs need).
+- Drag-and-drop in the builder uses the `text/x-idcard-field` MIME type.
+- UI copy style: plain NZ English ("licence" noun, "colour", "centre"), short and direct, no tips.
+
+## TODO
+
+1. **First real-printer test** (HDP5000). Verified on Windows 11 with the PDF test printer (2026-10-17,
+   3.0): install over 2.3 keeps the data and passwords, CR80/CR79/CR100/custom cards, portrait and
+   landscape, two-sided pages, Rotate back 180°, queue → printed, cancel by document name, status
+   monitor, 600 dpi cards for a 600 dpi printer, Update now (3.0.0 → 3.0.1 from a test feed).
+   Still to check on the real printer: the driver's own CR80 paper; dual-sided through the flipper and
+   how a landscape back lines up; ribbon/film % and card count from the FARGO registry values; printer
+   alerts (ribbon out, jam…); barcodes scan; CR79/CR100 on a printer that takes them.
+2. Code signing (setup and program): without it UAC says "unknown publisher" and SmartScreen warns.
+   Then the updater can also check the setup's signature, not only GitHub's SHA-256.
+3. Inno Setup licence: free for commercial use, but jrsoftware asks businesses over US$5,000/yr to buy
+   one (optional). Josh to decide.
+4. While at the printer: magstripe encoding and the UV (F) panel can be driven from text in the print
+   job (`~1`–`~3`, `~T`/`~I`, see the HDP5000 user guide). Smart card encoding needs HID's licensed SDK.
+5. Feature ideas (pick with Josh): webcam photo capture with a crop guide (face auto-crop later);
+   conditional elements (e.g. a CONTRACTOR band by Position); import from Active Directory or Gallagher
+   Command Centre; supply cost per card; more than one printer; split app.js by area.
+6. Have the licence reviewed by a lawyer before wide distribution (NZ law, NZ$1 liability cap, CGA
+   business clause). No contact details are in it yet.
+
+## Testing on Windows (no card printer needed)
+
+- The service needs a signed-in Windows desktop session: its database key is DPAPI-protected, and DPAPI
+  fails over SSH with key authentication ("Access is denied").
+- Test printer: `Add-PrinterPort -Name C:\Test\card.pdf` then
+  `Add-Printer -Name "Test Card Printer (PDF)" -DriverName "Microsoft Print To PDF" -PortName C:\Test\card.pdf`.
+  Every card printed lands in that PDF (overwritten each time) with no Save dialog; render it to check.
+- From another machine: `ssh -L 5180:127.0.0.1:5180 user@pc` keeps the Host header `localhost:5180`,
+  so the app accepts it (it only answers loopback with a localhost Host).
+- Updates: a Debug build reads `IDCARD_UPDATE_FEED` (a user environment variable) for a test feed; serve
+  a `latest.json` plus the setup to the PC (`ssh -R` works). Release builds always use GitHub.
+- GUI programs started from SSH need the desktop session: a scheduled task with an Interactive
+  principal for the signed-in user (session 0 can't show windows or tray icons).
+
+## Testing approach used so far
+
+3.0 (C#): `tools/smoke.mjs` and `tools/api-check.mjs` (written for the Node service) pass unchanged
+against the C# service, plus xUnit tests; Node-made databases and backups open in 3.0 and 3.0 backups
+open in 2.x; full install/upgrade/print/update run on a Windows 11 VM. Before 3.0 (Node):
+
+End-to-end in headless Chromium (Playwright) against the simulator: login, licence, clients, people,
+CSV + photo import, template builder drag/resize/snap/undo, printing, ribbon-out pause/recovery,
+crash (`kill -9`) recovery, backup/restore with right/wrong password, Host/Origin rejection, lockout,
+and grepping the DB/WAL files to confirm no readable text. The real HDP5000 has NOT yet printed from
+this app — first real-printer test should check dual-sided handling, back orientation
+("Rotate back side 180°") and that ribbon % updates after printing.

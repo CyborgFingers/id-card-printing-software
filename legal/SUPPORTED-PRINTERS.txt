@@ -1,0 +1,55 @@
+ID CARD PRINTING SOFTWARE FREE - SUPPORTED PRINTERS
+Copyright (c) 2026 Josh McNabb. All rights reserved.
+
+Cards are printed through the printer's own Windows driver, so the
+printer's driver must be installed first. Each card template has its card
+size: CR80 (85.6 x 54 mm, the usual ID card), CR79 (83.9 x 52.1 mm), CR100
+(98.5 x 67 mm) or a custom size, and the printer must accept that size. Cards
+are sent at the printer's own resolution: 600 dpi for 600 dpi printers,
+otherwise 300 dpi. How much the software can report about the printer depends
+on its driver.
+
+
+HID FARGO PRINTERS
+Printing, live status and alerts on every model. Ribbon and film levels, the
+card counter and flipper (dual-sided) detection are read from the FARGO
+driver and shown when the driver reports them; film levels only apply to
+retransfer (HDP) models. The software was developed against the HDP5000 and
+checked on Windows 11; the other models use the same FARGO driver family but
+have not all been tested with this software.
+
+  HID FARGO HDP5000                    Retransfer (HDP)
+  HID FARGO HDP5600                    Retransfer (HDP)
+  HID FARGO HDP6600                    Retransfer (HDP)
+  HID FARGO HDP8500                    Industrial retransfer (HDP)
+  HID FARGO DTC1250e                   Direct-to-card
+  HID FARGO DTC1500                    Direct-to-card
+  HID FARGO DTC4250e                   Direct-to-card
+  HID FARGO DTC4500e                   Direct-to-card
+  HID FARGO DTC5500LMX                 Direct-to-card, high volume
+  HID FARGO C50                        Direct-to-card
+  HID FARGO DTC1000Me                  Direct-to-card, mobile
+  HID FARGO INK1000                    Inkjet card printer
+
+
+BASIC SUPPORT - OTHER CARD PRINTERS
+Any card printer with a Windows driver for the card size used, for example
+Zebra, Evolis, Magicard, Entrust (Datacard) and IDP printers. Printing works
+through the driver, and alerts are limited to what Windows reports (offline,
+paper/card out, jams, errors). Ribbon levels are not shown.
+
+
+DUAL-SIDED PRINTING
+Printers with a flipper module print both sides in one pass. Printers
+without one can still make dual-sided cards: print all the fronts, flip the
+stack, then press "Print backs" in the print queue (Settings > Printing >
+How the back is printed > Manually).
+
+
+NOT SUPPORTED
+Ordinary office and photo printers, label printers, and network print
+services that do not use a Windows card-printer driver.
+
+Printer names and trade marks belong to their owners. Their mention here does
+not mean they endorse this software. Support is provided "as is" and without
+warranty, as set out in LICENSE.txt.

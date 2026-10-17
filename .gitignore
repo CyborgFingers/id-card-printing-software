@@ -1,0 +1,8 @@
+node_modules/
+.devdata/
+dist/
+.DS_Store
+*.log
+graphify-out/
+build/
+installer/redist/

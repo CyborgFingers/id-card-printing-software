@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IdCard.Core/IdCard.Core.csproj" />
+    <Project Path="src/IdCard.Desktop/IdCard.Desktop.csproj" />
+    <Project Path="src/IdCard.DevHost/IdCard.DevHost.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IdCard.Tests/IdCard.Tests.csproj" />
+  </Folder>
+</Solution>

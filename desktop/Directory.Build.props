@@ -1,0 +1,17 @@
+<Project>
+  <!-- ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>3.0.0</Version>
+    <Product>ID Card Printing Software Free</Product>
+    <Company>Josh McNabb</Company>
+    <Copyright>Copyright (c) 2026 Josh McNabb. All rights reserved.</Copyright>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Line numbers in error reports without shipping separate .pdb/.xml files. -->
+    <DebugType>embedded</DebugType>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>
