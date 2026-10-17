@@ -238,7 +238,7 @@ internal sealed partial class Routes
 
     // ---------------- custom person fields (Settings > Person fields) ----------------
     bool FieldTaken(string label, string? key = null) =>
-        AppService.FieldList.Select(f => f.Label).Concat(["Card Status", "Notes", "ID Photo"]).Any(l => string.Equals(l, label, StringComparison.OrdinalIgnoreCase))
+        AppService.FieldList.Select(f => f.Label).Concat(["Card Status", "Notes", "ID Photo", "ID"]).Any(l => string.Equals(l, label, StringComparison.OrdinalIgnoreCase))
         || app.CustomFields.OfType<JsonObject>().Any(f => Js.ToStr(f["key"]) != key && string.Equals(Js.ToStr(f["label"]), label, StringComparison.OrdinalIgnoreCase));
 
     void SaveFields(List<JsonObject> list, string user, string what, string? edited)

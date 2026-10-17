@@ -3,7 +3,7 @@ import { createAdmin } from './admin.js';
 import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel } from './render.js';
 import { createBuilder } from './builder.js';
 import { LICENSE_TEXT, LICENSE_VERSION, SUPPORTED_PRINTERS_TEXT } from './legal.js';
-import { readPeople, buildPhotoIndex, matchPhoto } from './csv.js';
+import { readPeople, buildPhotoIndex, matchPhoto, idKey } from './csv.js';
 // (people import uses these)
 
 // ======================================================================
@@ -740,7 +740,7 @@ const importer = {
     const matched = im.people.filter(p => p.file).length;
     root.innerHTML = `<div class="stack" style="gap:20px"><div class="steps">
       <div class="card step"><span class="n">1</span><h3>Fill in the template</h3>
-        <div class="code">${['First Name', 'Last Name', ...clientFields(c).filter(f => !['firstName', 'lastName'].includes(f)).map(f => ({ staffId: 'Staff ID Number', position: 'Position', title: 'Title', address: 'Address' })[f] || esc(fieldLabel(f))), 'ID Photo'].join(',')}</div>
+        <div class="code">${['ID', 'First Name', 'Last Name', ...clientFields(c).filter(f => !['firstName', 'lastName'].includes(f)).map(f => ({ staffId: 'Staff ID Number', position: 'Position', title: 'Title', address: 'Address' })[f] || esc(fieldLabel(f))), 'ID Photo'].join(',')}</div>
         <a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download style="align-self:flex-start">${ICON.download}Download blank CSV</a></div>
       <div class="card step ${im.people.length ? 'done' : ''}"><span class="n">${im.people.length ? '✓' : '2'}</span><h3>Upload the completed CSV</h3>
         <div class="row"><button class="btn ${im.people.length ? '' : 'primary'}" id="iCsvBtn">${ICON.upload}${im.people.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="iCsv" accept=".csv,text/csv" hidden></div>
@@ -759,7 +759,8 @@ const importer = {
       if (!people.length) { toast('No people found in that CSV', 'err'); return; }
       this.release();
       const existing = new Set(peopleTab.st.rows.map(p => `${p.firstName} ${p.lastName}`.toLowerCase().trim()));
-      im.people = people.map(p => { const dup = existing.has(`${p.firstName} ${p.lastName}`.toLowerCase().trim()); return { ...p, id: uid(), include: !dup, dup }; });
+      const ids = new Map(); for (const p of people) { const k = idKey(p.importId); if (k) ids.set(k, (ids.get(k) || 0) + 1); }
+      im.people = people.map(p => { const dup = existing.has(`${p.firstName} ${p.lastName}`.toLowerCase().trim()); return { ...p, id: uid(), include: !dup, dup, idTwice: ids.get(idKey(p.importId)) > 1 }; });
       im.csvName = f.name; im.warning = warning; this.match(); this.mount(root, top, c);
     };
     const addFiles = e => {
@@ -779,6 +780,7 @@ const importer = {
   release() { const im = peopleTab.st.importing; if (im) for (const p of im.people) if (p.url) URL.revokeObjectURL(p.url); },
   status(p) {
     if (!p.firstName && !p.lastName) return ['err', 'Name missing'];
+    if (p.idTwice) return ['err', 'ID used twice'];   // both rows would get the same photo
     if (p.dup) return ['info', 'Already in client'];
     if (!p.file) return p.photoFile ? ['err', 'Photo not found'] : ['warn', 'No photo'];
     return ['ok', 'Ready'];
@@ -787,12 +789,12 @@ const importer = {
     const im = peopleTab.st.importing, box = $('#iTable'); if (!box) return;
     if (!im.people.length) { box.innerHTML = `<div class="empty">${ICON.stack}<b>No list loaded yet</b></div>`; return; }
     const ok = im.people.filter(p => p.include && this.status(p)[0] !== 'err');
-    const cols = clientFields(this.client).filter(f => !['firstName', 'lastName'].includes(f));
+    const cols = clientFields(this.client).filter(f => !['firstName', 'lastName'].includes(f)), hasId = im.people.some(p => p.importId);
     const y = $('.tbl-wrap', box)?.scrollTop;
     box.innerHTML = `<div class="toolbar"><b>Review before importing</b><span class="sp"></span>
         <button class="btn primary lg" id="iGo" ${ok.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(ok.length, 'person')}</button></div>
-      <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th><th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
-      <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>
+      <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th>${hasId ? '<th>ID</th>' : ''}<th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
+      <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>${hasId ? `<td class="num">${esc(p.importId) || '<span class="muted">—</span>'}</td>` : ''}
         <td>${p.url ? `<img class="thumb" src="${p.url}" alt="" loading="lazy">` : '<div class="thumb"></div>'}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
         ${cols.map(f => `<td class="muted" style="max-width:200px;white-space:pre-line">${esc(fieldInfo(f).type === 'date' ? formatDate(p[f], 'DD/MM/YYYY') : p[f]) || '—'}</td>`).join('')}
         <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.file ? p.file.name : p.photoFile) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;

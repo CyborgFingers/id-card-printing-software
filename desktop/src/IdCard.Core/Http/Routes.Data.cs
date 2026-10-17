@@ -85,7 +85,8 @@ internal sealed partial class Routes
             var designs = c is null ? [] : app.AssignmentsByClient().GetValueOrDefault((string)c["id"]!, []).Select(app.FindDesign).OfType<JsonObject>().ToList();
             if (designs.Count > 0) foreach (var d in designs) used.UnionWith(app.DesignFields(d));
             else { used.UnionWith(AppService.PersonFields); used.UnionWith(custom.Select(f => Js.ToStr(f["key"]))); }   // no template yet: every detail
-            var cols = AppService.PersonFields.Where(used.Contains).Select(f => AppService.CsvHeaders[f])
+            // ID pairs each row with its photo during import (7 → 7.jpg); it isn't saved.
+            var cols = AppService.PersonFields.Where(used.Contains).Select(f => AppService.CsvHeaders[f]).Prepend("ID")
                 .Concat(custom.Where(f => used.Contains(Js.ToStr(f["key"]))).Select(f => Js.ToStr(f["label"]))).Append(AppService.CsvHeaders["photo"]);
             var fname = c is not null ? $"{FileNamePart((string)c["name"]!)} - Import Template.csv" : "ID-Card-Import-Template.csv";
             return Csv([cols], fname);

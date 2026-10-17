@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto } = await import('../../web/js/csv.js');
+const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, idKey } = await import('../../web/js/csv.js');
 const { formatDate } = await import('../../web/js/render.js');
 
 test('CSV: NZ day-first dates and custom columns', () => {
@@ -40,6 +40,16 @@ test('ID photos match by file name, path, missing extension or the person\'s nam
   assert.equal(m('aroha'), 'aroha.jpg');
   assert.equal(m('', 'Ben', 'Smith'), 'ben_smith.jpg');
   assert.equal(m('missing.jpg', 'Mere', 'X'), null);   // a named file that isn't there never falls back to a name match
+});
+
+test('ID photos match the CSV\'s ID column (1 → 1.jpg), leading zeros or not', () => {
+  const { people } = readPeople('ID,First Name,Last Name,ID Photo\n1,Jane,Doe,\n007,John,Doe,\n12,Alex,Sample,\n3,Sam,Lee,sam.jpg\n4,No,Photo,\n');
+  assert.deepEqual(people.map(p => p.importId), ['1', '007', '12', '3', '4']);
+  const idx = buildPhotoIndex(['1.JPG', '7.png', '012.jpg', 'sam.jpg', '3.jpg'].map(name => ({ name })));
+  assert.deepEqual(people.map(p => matchPhoto(idx, p)?.name || null), ['1.JPG', '7.png', '012.jpg', 'sam.jpg', null]);   // a named photo wins over the ID
+  assert.equal(idKey(' 0042 '), '42'); assert.equal(idKey('0'), '0'); assert.equal(idKey('A007'), 'a007');
+  const both = buildPhotoIndex(['007.jpg', '7.jpg'].map(name => ({ name })));
+  assert.equal(matchPhoto(both, { importId: '7', firstName: '', lastName: '' }).name, '7.jpg');   // an exact name beats a padded one
 });
 
 test('card dates in each format', () => {
