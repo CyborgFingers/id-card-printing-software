@@ -33,7 +33,7 @@ internal sealed partial class Routes(AppService app, Router router)
         Designs(); Queue();
         History(); Backups();
         // Existing routes that only administrators may use.
-        router.AdminOnly("PUT /api/config", "POST /api/branding/logo", "DELETE /api/branding/logo", "POST /api/printer/simulate", "POST /api/printer/preferences",
+        router.AdminOnly("PUT /api/config", "POST /api/branding/logo", "DELETE /api/branding/logo", "POST /api/printer/preferences",
             "POST /api/designs", "PUT /api/designs/:id", "PUT /api/designs/:id/clients", "DELETE /api/designs/:id", "POST /api/assets",
             "PUT /api/clients/:id/templates", "DELETE /api/clients/:id", "POST /api/backup", "POST /api/restore");
     }
@@ -230,7 +230,7 @@ internal sealed partial class Routes(AppService app, Router router)
             return Ok(new JsonObject
             {
                 ["app"] = AppService.AppName, ["version"] = app.Version, ["copyright"] = AppService.Copyright, ["license"] = LicenseState(), ["branding"] = BrandingJson(),
-                ["platform"] = Platform, ["dbFile"] = app.DbFile,
+                ["platform"] = Platform, ["dbFile"] = app.DbFile, ["simulator"] = app.HasSimulator,
                 ["security"] = new JsonObject { ["cipher"] = "AES-256 (SQLCipher 4)", ["keyProtection"] = app.KeyProtection },
                 ["user"] = UserInfo(r.User.Username, r.User.IsDefaultPassword, r.User.Role),
                 ["fields"] = fields, ["config"] = Config.DeepClone(), ["designs"] = new JsonArray(app.Designs.Select(d => d.DeepClone()).ToArray()), ["clients"] = app.ListClients(),
@@ -276,7 +276,7 @@ internal sealed partial class Routes(AppService app, Router router)
         {
             var body = r.Json;
             var before = (JsonObject)Config.DeepClone();
-            foreach (var k in AppService.ConfigKeys) if (body.ContainsKey(k) && !Protected.Contains(k)) Config[k] = body[k]?.DeepClone();
+            foreach (var k in AppService.ConfigKeys) if (body.ContainsKey(k) && !Protected.Contains(k) && (app.HasSimulator || k is not ("simulate" or "simSeconds"))) Config[k] = body[k]?.DeepClone();
             Config["theme"] = CleanTheme(Config["theme"]);
             Config["companyName"] = Str(Config["companyName"], 80);
             Config["simSeconds"] = Js.NumNode(Math.Max(2, Math.Min(120, Js.NumOr(Config["simSeconds"], 6))));
@@ -304,7 +304,8 @@ internal sealed partial class Routes(AppService app, Router router)
         }, unlocked: true);
         router.Add("POST", "/api/printer/preferences", r => { app.Printer.OpenPreferences(); return Ok(); });
         router.Add("POST", "/api/printer/queue", r => { app.Printer.OpenQueue(); return Ok(); });
-        router.Add("POST", "/api/printer/simulate", r => { if (app.Printer is SimPrinter s) s.SetCondition(Js.AsString(r.Json["condition"])); return Ok(); });
+        if (app.HasSimulator)   // development host only
+            router.Add("POST", "/api/printer/simulate", r => { if (app.Printer is ISimulatedPrinter s) s.SetCondition(Js.AsString(r.Json["condition"])); return Ok(); }, admin: true);
         router.Add("GET", "/api/printer/events", r => Ok(Rows("SELECT ts, type, code, level, title FROM printer_events ORDER BY id DESC LIMIT 300")));
     }
 

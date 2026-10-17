@@ -9,7 +9,7 @@ import { readPeople, buildPhotoIndex, matchPhoto } from './csv.js';
 // ======================================================================
 // State, API and small helpers
 // ======================================================================
-const S = { config: {}, designs: [], clients: [], queue: { batches: [] }, printer: null, worker: {}, version: '', platform: '', dbFile: '', security: {}, user: null, connected: false, update: null };
+const S = { config: {}, designs: [], clients: [], queue: { batches: [] }, printer: null, worker: {}, version: '', platform: '', dbFile: '', security: {}, simulator: false, user: null, connected: false, update: null };
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -330,7 +330,7 @@ function connect() {
 async function loadState(remount = true) {
   const st = await api('GET', '/api/state');
   setCustomFields(st.config.customFields);
-  Object.assign(S, { config: st.config, designs: st.designs, clients: st.clients, queue: st.queue, printer: st.printer, worker: st.worker, version: st.version, platform: st.platform, dbFile: st.dbFile, security: st.security, user: st.user, license: st.license, update: st.update || null });
+  Object.assign(S, { config: st.config, designs: st.designs, clients: st.clients, queue: st.queue, printer: st.printer, worker: st.worker, version: st.version, platform: st.platform, dbFile: st.dbFile, security: st.security, simulator: !!st.simulator, user: st.user, license: st.license, update: st.update || null });
   applyBranding(st.branding);
   $('#ver').textContent = st.version;
   renderShell();
@@ -1132,7 +1132,7 @@ VIEWS.settings = {
       <div class="stack">
         <div class="card"><div class="card-h"><div><h2>Printer</h2></div><button class="btn sm" id="cRefresh">${ICON.retry}Refresh list</button></div><div class="card-b stack">
           <label class="f">Card printer<select class="input" id="cPrinter" ${c.simulate ? 'disabled' : ''}><option value="">Loading printers…</option></select></label>
-          ${sw('simulate', 'Simulator mode')}
+          ${S.simulator ? sw('simulate', 'Simulator mode') : ''}
           ${c.simulate ? `<div class="grid2"><label class="f">Simulated seconds per card<input class="input" type="number" min="2" max="120" data-c="simSeconds" value="${c.simSeconds}"></label></div>` : ''}
           ${!c.simulate && S.printer && S.printer.dpi ? `<span class="hint">Print resolution ${S.printer.dpi} dpi</span>` : ''}
           <div class="row"><button class="btn" id="cTest">${ICON.print}Print a test card</button>${!c.simulate ? `<button class="btn" id="cPrefs">Printing preferences</button><button class="btn" id="cQueue">Windows print queue</button>` : ''}</div>

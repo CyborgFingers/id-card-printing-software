@@ -15,8 +15,12 @@ printer's Windows driver. It is installed by an Inno Setup installer that also i
 runtimes and the WebView2 Runtime when they're missing, and it updates itself from GitHub releases.
 
 **Printing is Windows only** (System.Drawing.Printing, WMI, FARGO driver registry values, DPAPI).
-`IdCard.DevHost` runs the same service on macOS/Linux with the **simulated printer** so everything
-else can be developed and tested on a Mac.
+`IdCard.DevHost` runs the same service on macOS/Linux with a **simulated printer** so everything
+else can be developed and tested on a Mac. The simulator lives only in the DevHost project: the released
+Windows program has no simulator mode (`ServiceOptions.Simulator` is null there, so Settings hides the
+switch, `simulate` is forced off and `/api/printer/simulate` doesn't exist). `IDCARD_DEMO_PRINTER=1`
+makes the DevHost present the simulated printer as an ordinary installed "Card Printer" with no
+simulator mode, which is how the README screenshots are taken.
 
 ## Run it on a Mac (development)
 
@@ -35,8 +39,8 @@ node --test tools/test/           # the screens' own logic (CSV import, card dat
   else works (the API answers 403 until it does), then accept the licence. `tools/smoke.mjs` on a fresh
   `.devdata/` does this itself and sets the password to `smoke-test-password` (override: `SMOKE_PASS`).
 - `.devdata/` holds the dev database (git-ignored). Delete it to start fresh.
-- Settings → Printer → Simulator mode; the printer drawer (click the sidebar status card) can inject
-  simulated faults (ribbon out, card jam, offline…).
+- DevHost only: Settings → Printer → Simulator mode; the printer drawer (click the sidebar status card)
+  can inject simulated faults (ribbon out, card jam, offline…).
 - `dotnet build desktop/src/IdCard.Desktop` builds the Windows program on the Mac (EnableWindowsTargeting).
 
 ## Build the Windows installer
@@ -65,14 +69,13 @@ desktop/src/IdCard.Core/        The service (net10.0, cross-platform)
   Security/Passwords.cs         scrypt password hashes (same format as 2.x)
   Printing/Printing.cs          IPrinter contract, CardSize, PrintJob
   Printing/PrinterStatus.cs     Raw spooler/FARGO data → plain-English alerts (deriveStatus)
-  Printing/SimPrinter.cs        Simulated printer
   Printing/CardPaper.cs         Which paper a card prints on (driver paper by name, else custom size)
   Http/Router.cs                Localhost/Host/Origin checks, route table + auth gates, static files
   Http/Routes*.cs               The API: auth/users/settings, clients/people/fields, designs/queue, history/backups/updates
 desktop/src/IdCard.Desktop/     The Windows program (WinExe, net10.0-windows, x64): Program (single instance,
                                 --background, --reset-admin, update runner), TrayApp, MainWindow (WebView2),
                                 KeyStore (DPAPI), Printing/WindowsPrinter*.cs (driver printing, WMI monitor)
-desktop/src/IdCard.DevHost/     The service with the simulator on any OS
+desktop/src/IdCard.DevHost/     The service with a simulated printer on any OS (SimPrinter.cs; development only)
 desktop/tests/IdCard.Tests/     xUnit tests
 desktop/tools/IdCard.PrintCheck/  Windows printing test harness (publish self-contained, run on a test PC)
 web/                            The screens (served from wwwroot): index.html, app.css, js/app.js (views),

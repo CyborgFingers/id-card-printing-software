@@ -1,11 +1,15 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
-// A simulated card printer, so the app can be tried (and tested) without one.
+// A simulated card printer for development and the automated tests. It is not part of the released
+// Windows program. With asRealPrinter it presents itself like an ordinary installed card printer
+// (for screenshots); otherwise it is the service's "simulator mode".
 using System.Globalization;
+using IdCard.Printing;
 
-namespace IdCard.Printing;
+namespace IdCard.DevHost;
 
-public sealed class SimPrinter(Func<PrinterSettingsSnapshot> settings) : IPrinter
+public sealed class SimPrinter(Func<PrinterSettingsSnapshot> settings, bool asRealPrinter = false) : IPrinter, ISimulatedPrinter
 {
+    const string RealName = "Card Printer";
     sealed class Job { public int Id; public string Document = ""; public DateTime Created; public int Pages; public string Status = "Spooling"; public double PausedForMs; public bool Done; }
 
     static readonly string[] ErrorConditions = ["ribbon-out", "cards-out", "jam", "door", "offline", "attention"];
@@ -46,7 +50,7 @@ public sealed class SimPrinter(Func<PrinterSettingsSnapshot> settings) : IPrinte
             raw = new PrinterRaw
             {
                 Ts = DateTimeOffset.UtcNow, Found = true, PrinterStatus = _condition == "offline" ? 7 : _jobs.Count > 0 ? 4 : 3,
-                DetectedErrorState = des, WorkOffline = _condition == "offline", PortName = "USB001 (simulated)", DriverName = "Simulated HID FARGO HDP5000", Dpi = 300,
+                DetectedErrorState = des, WorkOffline = _condition == "offline", PortName = asRealPrinter ? "USB001" : "USB001 (simulated)", DriverName = asRealPrinter ? "Card printer driver" : "Simulated card printer", Dpi = 300,
                 StatusText = _condition == "offline" ? "Offline" : _jobs.Count > 0 ? "Printing" : "Normal",
                 Jobs = _jobs.Select(j => new RawJob(j.Id, j.Document, j.Status, 0, 0, j.Pages)).ToList(),
                 Fargo = new()
@@ -75,7 +79,7 @@ public sealed class SimPrinter(Func<PrinterSettingsSnapshot> settings) : IPrinte
     public Task CancelJobAsync(string docName) { lock (_lock) _jobs.RemoveAll(j => j.Document == docName); Tick(); return Task.CompletedTask; }
 
     public Task<IReadOnlyList<PrinterInfo>> ListPrintersAsync() =>
-        Task.FromResult<IReadOnlyList<PrinterInfo>>([new PrinterInfo("HID FARGO HDP5000 Card Printer", "Simulated", "USB001", false, false)]);
+        Task.FromResult<IReadOnlyList<PrinterInfo>>([new PrinterInfo(RealName, asRealPrinter ? "Card printer driver" : "Simulated", "USB001", false, false)]);
 
     public void OpenPreferences() { }
     public void OpenQueue() { }

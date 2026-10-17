@@ -1,6 +1,6 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
-// The printer contract. Windows (IdCard.Windows) talks to the real card printer through its driver;
-// SimPrinter stands in everywhere else and for practice.
+// The printer contract. Windows (IdCard.Desktop) talks to the real card printer through its driver;
+// the development host has a simulated printer for development and tests (not in the released program).
 namespace IdCard.Printing;
 
 /// <summary>A card size. Width and height are the portrait (short side first) size in millimetres.</summary>
@@ -44,6 +44,9 @@ public sealed class PrinterRaw
 }
 
 public sealed record PrinterSettingsSnapshot(string PrinterName, int PollMs, int SimSeconds);
+
+/// <summary>A development printer whose faults can be switched on (ribbon out, jam...) to try the alerts.</summary>
+public interface ISimulatedPrinter { void SetCondition(string? condition); }
 
 public interface IPrinter : IDisposable
 {

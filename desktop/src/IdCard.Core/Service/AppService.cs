@@ -30,8 +30,10 @@ public sealed class ServiceOptions
     /// <summary>Returns the database key; allowCreate is true only when there is no database yet.</summary>
     public required Func<bool, string> GetDbKey { get; init; }
     public required string KeyProtection { get; init; }
-    /// <summary>The real printer (Windows); null where there is none, so only the simulator is used.</summary>
+    /// <summary>The real printer (Windows).</summary>
     public Func<Func<PrinterSettingsSnapshot>, IPrinter>? RealPrinter { get; init; }
+    /// <summary>A simulated printer, development host only: the released program has none, so it has no simulator mode.</summary>
+    public Func<Func<PrinterSettingsSnapshot>, IPrinter>? Simulator { get; init; }
     public int? Port { get; init; }
     public string Version { get; init; } = "3.0.0";
     /// <summary>Called after Settings > Stop the print service, or once an update has started (the program should exit).</summary>
@@ -59,12 +61,14 @@ public sealed partial class AppService : IDisposable
     internal string Version => _o.Version;
     internal string WebRoot => _o.WebRoot;
     internal bool HasRealPrinter => _o.RealPrinter is not null;
+    internal bool HasSimulator => _o.Simulator is not null;
     public int Port { get; private set; }
     bool _disposed;
 
     public AppService(ServiceOptions o)
     {
         _o = o;
+        if (o.RealPrinter is null && o.Simulator is null) throw new ArgumentException("A printer is required.", nameof(o));
         Directory.CreateDirectory(o.DataDir);
         DbFile = Path.Combine(o.DataDir, "id-card-printing-software.db");
         Xfer = Path.Combine(o.DataDir, "transfer");   // only ever holds password-encrypted backups, briefly
@@ -143,7 +147,7 @@ public sealed partial class AppService : IDisposable
     JsonObject DefaultConfig() => new()
     {
         ["printerName"] = "",
-        ["simulate"] = !HasRealPrinter,
+        ["simulate"] = HasSimulator && !HasRealPrinter,
         ["simSeconds"] = 6,
         ["defaultSides"] = "both",
         ["cardSides"] = "dual",        // 'single' = front only, 'dual' = front and back
@@ -184,6 +188,7 @@ public sealed partial class AppService : IDisposable
         }
         if (c["customFields"] is not JsonArray) c["customFields"] = new JsonArray();
         if (c["autoBackup"] is not JsonObject) c["autoBackup"] = DefaultConfig()["autoBackup"]!.DeepClone();
+        if (!HasSimulator) c["simulate"] = false;   // simulator mode only exists in the development host
         Config = c;
     }
 
@@ -281,7 +286,8 @@ public sealed partial class AppService : IDisposable
     internal void MakePrinter()
     {
         if (_printer is not null) { _printer.StatusChanged -= _statusHandler; _printer.Dispose(); }
-        var p = Js.Truthy(Config["simulate"]) || _o.RealPrinter is null ? new SimPrinter(PrinterSettings) : _o.RealPrinter(PrinterSettings);
+        var useSimulator = _o.Simulator is not null && (Js.Truthy(Config["simulate"]) || _o.RealPrinter is null);
+        var p = useSimulator ? _o.Simulator!(PrinterSettings) : _o.RealPrinter!(PrinterSettings);
         _printer = p;
         _statusHandler = raw => OnPrinterStatus(p, raw);
         p.StatusChanged += _statusHandler;
