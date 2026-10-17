@@ -61,7 +61,7 @@ add their people (or import them from a spreadsheet with their photos) and print
   </tr>
 </table>
 
-<sub>The screenshots show fictional organisations and people with illustrated placeholder photos, printed on the built-in printer simulator.</sub>
+<sub>The screenshots show made-up example organisations and people with illustrated placeholder photos.</sub>
 
 ## Features
 
@@ -196,13 +196,6 @@ and to install them, and by the setup to download the WebView2 Runtime if the PC
 </details>
 
 <details>
-<summary><b>Can I use it without a card printer?</b></summary>
-
-Yes. Turn on **Simulator mode** in Settings to design templates, set up people and try the print queue with a
-simulated printer. Choose your real printer when it is connected.
-</details>
-
-<details>
 <summary><b>Can my cards have two sides on a printer without a flipper?</b></summary>
 
 Yes. In **Settings > Printing** choose "Manually (flip the cards)". The queue prints the fronts, you flip the stack and
@@ -225,8 +218,8 @@ dotnet test desktop/tests/IdCard.Tests          # unit tests
 dotnet build desktop/src/IdCard.Desktop         # the Windows program
 ```
 
-The service also runs on macOS or Linux with a simulated printer (`desktop/src/IdCard.DevHost`), which is how the
-screens are developed and tested. The installer is built with Inno Setup 6 (`tools/build-installer.ps1`), and pushing
+For development, the service also runs on macOS or Linux (`desktop/src/IdCard.DevHost`) with a simulated printer
+that is not part of the released program. The installer is built with Inno Setup 6 (`tools/build-installer.ps1`), and pushing
 a version tag (for example `v3.0.1`) builds the setup and publishes a release. See [CLAUDE.md](CLAUDE.md) for the
 developer notes: layout, design decisions and the testing approach.
 
