@@ -44,6 +44,8 @@ public sealed class ServiceOptions
     public Func<string, string?>? RunInstaller { get; init; }
     /// <summary>Shows a desktop notification (title, message, whether it's a problem): the Windows program's tray icon. Null where there are none.</summary>
     public Action<string, string, bool>? Notify { get; init; }
+    /// <summary>True when the program's setup shows the licence and installs only once it's accepted, so the program doesn't ask again.</summary>
+    public bool LicenceAcceptedInSetup { get; init; }
 }
 
 public sealed partial class AppService : IDisposable
@@ -100,6 +102,11 @@ public sealed partial class AppService : IDisposable
             }
             catch (Microsoft.Data.Sqlite.SqliteException) { }
             LoadAll();
+            if (o.LicenceAcceptedInSetup && Js.AsString(Config["licenseAccepted"]?["version"]) != LicenseVersion)
+            {
+                Config["licenseAccepted"] = new JsonObject { ["version"] = LicenseVersion, ["by"] = "Windows setup", ["at"] = Js.Now() }; SaveConfig();
+                Log($"Licence version {LicenseVersion} accepted in the setup");
+            }
             Port = o.Port ?? (int)Js.NumOr(Config["port"], 5180);
             _printerStatus = PrinterStatus.Derive(null, StatusCfg());
             MakePrinter();

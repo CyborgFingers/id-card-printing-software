@@ -32,7 +32,7 @@ Install the program, sign in for the first time, and get ready to print your fir
 
 1. Download the setup from the program's GitHub releases page and run it.
 2. If Windows shows *Windows protected your PC*, choose **More info**, then **Run anyway**. This only happens the first time, because the setup isn't code-signed.
-3. Follow the setup. It installs the Microsoft components the program needs if they're missing.
+3. Follow the setup: read the licence and choose **I accept the agreement**. It installs the Microsoft components the program needs if they're missing.
 4. Tick **Start automatically when I sign in to Windows** if you want printing to be ready as soon as the PC starts.
 
 ### Sign in for the first time
@@ -40,7 +40,6 @@ Install the program, sign in for the first time, and get ready to print your fir
 1. Open **ID Card Printing Software Free** from the Start menu.
 2. Sign in with the username `admin` and the password `admin`.
 3. Choose your own password (at least 8 characters). You can't use the program until you do.
-4. Read the licence and choose **I accept**.
 
 ### Your first card, step by step
 
@@ -97,10 +96,15 @@ Then choose **Portrait** or **Landscape** under **Card orientation**. Your print
 
 ### Add a background
 
-1. Under **Front background**, choose **Choose image** and pick a PNG, JPG or WebP picture.
+1. Under **Front background**, choose **Choose image** and pick a picture: PNG, JPG, WebP, GIF, BMP or SVG.
 2. Or pick a **Background colour** instead.
+3. Choose **Save template** to keep it.
 
-> **Note:** Make background pictures the same shape as the card, for example 638 × 1013 pixels for a portrait CR80 card. A picture of a different shape is stretched to fit, and the program warns you when that happens.
+The picture fills the whole card. If it's a different shape from the card, its edges are trimmed rather than squashed, so for the best result make it the card's shape, for example 638 × 1013 pixels for a portrait CR80 card.
+
+> **Note:** iPhone photos saved as HEIC can't be opened. Save them as JPG first.
+
+To fade the background picture, for example behind text, drag **Image opacity** below it.
 
 ### Put people's details on the card
 
@@ -123,12 +127,22 @@ Under **Design**, add things that are the same on every card:
 
 Click a field on the card to select it. The right panel shows its settings:
 
-- **Text**: font, weight, size, colour, **CAPITALS**, alignment, rotation and letter spacing. **Smallest** is the size text shrinks to when a long name doesn't fit.
+- **Text**: font, weight, size, colour, **CAPITALS**, alignment, rotation and letter spacing. Text always stays inside its box: a long name shrinks down to the **Smallest** size, then moves onto two lines if the box has room, then shrinks further.
 - **Dates**: choose the **Date format**, such as 31/03/2027 or 31 Mar 2027.
 - **Photo**: corner radius, border, the colour shown when there's no photo, and **Make 3:4 portrait** for the usual photo shape.
 - **Position and size**: exact X, Y, width and height in pixels, plus **Centre horizontally**, **Centre vertically**, **Centre on card** and **Full width**.
 
 Use the bin button to remove the selected field from the card.
+
+### Layer order and opacity
+
+Things on the card are stacked: anything higher up is drawn over what's below it. With a field selected, under **Arrange**:
+
+- **To front** and **To back** move it to the top or bottom of the stack.
+- **Forward** and **Backward** move it up or down one place.
+- **Opacity** fades it: 100% is solid, lower values let what's behind show through, for example a faded logo watermark.
+
+The **On the front** list (shown when nothing is selected) lists everything in stacking order, top first. Clicking where things overlap selects the one on top.
 
 ### Keyboard shortcuts in the builder
 
@@ -136,6 +150,8 @@ Use the bin button to remove the selected field from the card.
 |---|---|
 | Arrow keys | Move the selected field 1 pixel |
 | Shift + arrow keys | Move it 10 pixels |
+| Ctrl + ] / Ctrl + [ | Bring the selected field forward / send it backward |
+| Ctrl + Shift + ] / Ctrl + Shift + [ | Bring it to the front / send it to the back |
 | Delete | Remove the selected field |
 | Esc | Deselect |
 | Ctrl + Z | Undo |

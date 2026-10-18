@@ -167,6 +167,9 @@ public sealed partial class AppService
         static string Colour(JsonNode? v, string def) => Js.AsString(v) is { } s && Hex().IsMatch(s) ? s : def;
         static JsonNode Rotate(JsonNode? v) { var n = Js.ToNumber(v); return Rotations.Contains(Js.NumberText(n)) ? (int)n : 0; }
         static JsonNode Num(JsonNode? v, double lo, double hi, double def) => Js.NumNode(Js.Num(v, lo, hi, def));
+        // Opacity (faded backgrounds and elements) is kept only when it isn't fully solid, so older templates read the same.
+        static JsonObject Faded(JsonObject o, string key, JsonNode? v, double lo) { var a = Js.Num(v, lo, 1, 1); if (a < 1) o[key] = Js.NumNode(Math.Round(a, 2)); return o; }
+        static JsonObject Side(JsonObject from, JsonObject side) => Faded(side, "bgOpacity", from["bgOpacity"], 0);
         var card = CleanCard(d["card"]);
         double max = Math.Max(Js.ToNumber(card["w"]), Js.ToNumber(card["h"])), maxSize = Math.Max(2000, 2 * max);
         var front = Js.Obj(d["front"]); var back = Js.Obj(d["back"]);
@@ -175,8 +178,8 @@ public sealed partial class AppService
         var outD = new JsonObject
         {
             ["id"] = d["id"]?.DeepClone(), ["name"] = Js.Str(d["name"], 80) is { Length: > 0 } n ? n : "Card template", ["version"] = 3, ["updatedAt"] = Js.Now(), ["card"] = card,
-            ["front"] = new JsonObject { ["background"] = Js.Truthy(front["background"]) ? front["background"]!.DeepClone() : null, ["bgColor"] = Colour(front["bgColor"], "#ffffff") },
-            ["back"] = new JsonObject { ["enabled"] = Js.Truthy(back["enabled"]), ["background"] = Js.Truthy(back["background"]) ? back["background"]!.DeepClone() : null, ["bgColor"] = Colour(back["bgColor"], "#ffffff") },
+            ["front"] = Side(front, new JsonObject { ["background"] = Js.Truthy(front["background"]) ? front["background"]!.DeepClone() : null, ["bgColor"] = Colour(front["bgColor"], "#ffffff") }),
+            ["back"] = Side(back, new JsonObject { ["enabled"] = Js.Truthy(back["enabled"]), ["background"] = Js.Truthy(back["background"]) ? back["background"]!.DeepClone() : null, ["bgColor"] = Colour(back["bgColor"], "#ffffff") }),
             ["fields"] = fields,
         };
         var elements = new JsonArray();
@@ -190,6 +193,7 @@ public sealed partial class AppService
                 ["id"] = id is not null && ElementId().IsMatch(id) ? id : "e" + Js.Uid(8), ["field"] = field, ["side"] = Js.AsString(e["side"]) == "back" ? "back" : "front",
                 ["x"] = Num(e["x"], -max, 2 * max, 0), ["y"] = Num(e["y"], -max, 2 * max, 0), ["w"] = Num(e["w"], 10, maxSize, 200), ["h"] = Num(e["h"], 10, maxSize, 60),
             };
+            Faded(o, "opacity", e["opacity"], 0.05);   // elements are drawn in list order: later ones on top
             if (field == "photo")
             {
                 o["radius"] = Num(e["radius"], 0, 500, 0); o["borderWidth"] = Num(e["borderWidth"], 0, 60, 0); o["borderColor"] = Colour(e["borderColor"], "#00529F"); o["bgColor"] = Colour(e["bgColor"], "#e9eef4");

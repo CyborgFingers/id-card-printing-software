@@ -30,6 +30,22 @@ export const cardLabel = (card) => { const c = cardInfo(card); return `${c.size 
 export const cardDims = (card) => { const c = cardInfo(card); return `${mm(c.mmW)} × ${mm(c.mmH)} mm · ${c.w} × ${c.h} px`; };
 
 const imgCache = new Map();
+/** A picture chosen for a template (background or logo) in a form the service keeps (PNG, JPG or WebP), at most
+ *  maxSide pixels: anything this window can open works, such as GIF, BMP or SVG, and transparency is kept. */
+export async function templateImage(file, maxSide = 2400) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    if (!img) throw new Error(`${file.name} can't be opened${/\.hei[cf]$/i.test(file.name) ? ': iPhone photos (HEIC) need saving as JPG first' : ''}. Choose a PNG, JPG or WebP picture.`);
+    const iw = img.naturalWidth || 1200, ih = img.naturalHeight || 1200;   // an SVG without a size
+    const k = Math.min(1, maxSide / Math.max(iw, ih));
+    if (k === 1 && img.naturalWidth && ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return { blob: file, type: file.type, w: iw, h: ih };
+    const c = document.createElement('canvas'); c.width = Math.round(iw * k); c.height = Math.round(ih * k);
+    const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, c.width, c.height);
+    const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    return { blob: await new Promise(r => c.toBlob(r, type, 0.92)), type, w: c.width, h: c.height };
+  } finally { imgCache.delete(url); URL.revokeObjectURL(url); }
+}
 export function loadImage(src) {
   if (!src) return Promise.resolve(null);
   if (imgCache.has(src)) return imgCache.get(src);
@@ -119,30 +135,36 @@ const fontOf = (e, size) => `${e.weight || 500} ${size}px "${e.font || 'Fira San
 function wrapLines(ctx, text, width) {
   const out = [];
   for (const para of String(text).split(/\r?\n/)) {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (!words.length) { out.push(''); continue; }
-    let line = words[0];
-    for (const w of words.slice(1)) { const t = line + ' ' + w; if (ctx.measureText(t).width <= width) line = t; else { out.push(line); line = w; } }
+    // Words, and a word too long for the line split after its hyphens (Smith-Jones), joined back without a space.
+    const toks = para.split(/\s+/).filter(Boolean).flatMap(w => (ctx.measureText(w).width > width ? w.split(/(?<=-)/) : [w]).map((t, i) => ({ t, sp: i === 0 })));
+    if (!toks.length) { out.push(''); continue; }
+    let line = toks[0].t;
+    for (const k of toks.slice(1)) { const t = line + (k.sp ? ' ' : '') + k.t; if (ctx.measureText(t).width <= width) line = t; else { out.push(line); line = k.t; } }
     out.push(line);
   }
   return out;
 }
-// Lay out a text field: shrink from its size down to its minimum until it fits the box.
+// Lay out a text field so it always stays inside its box: shrink from its size to its smallest size, then let a
+// long line wrap if the box has room, then keep shrinking. top is where the first line's capitals start.
 export function layoutText(ctx, e, value) {
-  const multi = e.field === 'address' || /\n/.test(value);
+  let wrap = e.field === 'address' || /\n/.test(value);
   let size = e.size || 40; const min = Math.min(e.minSize || 12, size);
-  let lines, cap, lh;
   for (;;) {
     ctx.font = fontOf(e, size); ctx.letterSpacing = `${e.letterSpacing || 0}px`;
-    cap = ctx.measureText('H').actualBoundingBoxAscent || size * 0.7;
-    lh = size * (e.lineHeight || 1.15);
-    lines = multi ? wrapLines(ctx, value, e.w) : [value];
-    const widest = Math.max(...lines.map(l => ctx.measureText(l).width));
-    const height = cap + (lines.length - 1) * lh;
-    if ((widest <= e.w && height <= e.h) || size <= min) break;
-    size = Math.max(min, size - 1);
+    const cap = ctx.measureText('H').actualBoundingBoxAscent || size * 0.7, lh = size * (e.lineHeight || 1.15);
+    const lines = wrap ? wrapLines(ctx, value, e.w) : [value];
+    const m = lines.map(l => ctx.measureText(l));
+    // Macrons over capitals reach above the capitals, and descenders (g, y) below the last line.
+    const asc = Math.max(cap, m[0].actualBoundingBoxAscent || 0), desc = m[m.length - 1].actualBoundingBoxDescent || 0;
+    const block = cap + (lines.length - 1) * lh;
+    if ((Math.max(...m.map(x => x.width)) <= e.w && asc + block - cap + desc <= e.h) || size <= 4) {
+      let top = e.valign === 'top' ? e.y + asc - cap : e.valign === 'bottom' ? e.y + e.h - block - desc : e.y + (e.h - block) / 2;   // capitals line up across names
+      top = Math.max(e.y + asc - cap, Math.min(top, e.y + e.h - block - desc));
+      return { size, lines, cap, lh, top };
+    }
+    if (size <= min && !wrap && /[\s-]/.test(value.trim())) { wrap = true; continue; }   // a long name: two lines before going smaller
+    size = size > min ? Math.max(min, size - 1) : size - 0.5;
   }
-  return { size, lines, cap, lh };
 }
 
 // Turns the context so a rotated element can be drawn as an upright box centred on (0, 0).
@@ -158,11 +180,9 @@ function drawText(ctx, e, value) {
   if (e.uppercase) value = value.toLocaleUpperCase();
   ctx.save();
   const b = turn(ctx, e);
-  const { lines, cap, lh } = layoutText(ctx, b, value);
-  const block = cap + (lines.length - 1) * lh;
-  const top = b.valign === 'top' ? b.y : b.valign === 'bottom' ? b.y + b.h - block : b.y + (b.h - block) / 2;
+  const { lines, cap, lh, top } = layoutText(ctx, b, value);
   const x = b.align === 'left' ? b.x : b.align === 'right' ? b.x + b.w : b.x + b.w / 2;
-  ctx.beginPath(); ctx.rect(b.x - 2, b.y - b.h, b.w + 4, b.h * 3); ctx.clip();
+  ctx.beginPath(); ctx.rect(b.x - 2, b.y - 2, b.w + 4, b.h + 4); ctx.clip();
   ctx.fillStyle = e.color || '#111111'; ctx.textAlign = e.align || 'center'; ctx.textBaseline = 'alphabetic';
   lines.forEach((l, i) => ctx.fillText(l, x, top + cap + i * lh));
   ctx.restore();
@@ -263,14 +283,19 @@ export async function drawCard(canvas, design, side, data = {}, opts = {}) {
   ctx.save();
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = (s && s.bgColor) || '#ffffff'; ctx.fillRect(0, 0, w, h);
-  if (bg) ctx.drawImage(bg, 0, 0, w, h);
-  for (const e of design.elements || []) {
+  if (bg) {   // fills the card; a picture of another shape is trimmed at the edges, never squashed
+    const f = Math.max(w / bg.naturalWidth, h / bg.naturalHeight), bw = bg.naturalWidth * f, bh = bg.naturalHeight * f;
+    ctx.save(); ctx.globalAlpha = s.bgOpacity ?? 1; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(bg, (w - bw) / 2, (h - bh) / 2, bw, bh); ctx.restore();
+  }
+  for (const e of design.elements || []) {   // in list order: later elements are drawn on top
     if (e.side !== side) continue;
+    ctx.save(); ctx.globalAlpha = e.opacity ?? 1;
     if (e.field === 'photo') drawPhoto(ctx, e, data, opts);
     else if (e.field === 'image') await drawImageEl(ctx, e, opts);
     else if (e.field === 'box') drawBox(ctx, e);
     else if (e.field === 'barcode') { const err = drawBarcode(ctx, e, barcodeValue(e, data, opts)); if (err && opts.errors) opts.errors.push(err); }
     else drawText(ctx, e, fieldValue(e, data, opts));
+    ctx.restore();
   }
   ctx.restore();
   return canvas;

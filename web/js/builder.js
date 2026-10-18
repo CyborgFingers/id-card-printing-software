@@ -1,7 +1,7 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
 // Visual card template builder: pick a background per side, tick fields, drag them onto the
 // card, then move, resize and style them. Everything is drawn by the same renderer used for printing.
-import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, loadImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims } from './render.js';
+import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, templateImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims } from './render.js';
 
 const SNAP = 7;           // card pixels
 const TICKABLE = ['photo', 'firstName', 'lastName', 'staffId', 'position', 'title', 'address'];
@@ -11,7 +11,13 @@ const IC = {
   ch: '<svg viewBox="0 0 24 24"><path d="M12 2v20"/><rect x="5" y="6" width="14" height="5" rx="1"/><rect x="7" y="14" width="10" height="5" rx="1"/></svg>',
   cv: '<svg viewBox="0 0 24 24"><path d="M2 12h20"/><rect x="6" y="5" width="5" height="14" rx="1"/><rect x="14" y="7" width="5" height="10" rx="1"/></svg>',
   cc: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/></svg>',
+  top: '<svg viewBox="0 0 24 24"><path d="M5 4h14"/><path d="M12 20V8"/><path d="M7 13l5-5 5 5"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>',
+  bottom: '<svg viewBox="0 0 24 24"><path d="M5 20h14"/><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/></svg>',
 };
+// Stacking order buttons: [direction for arrange(), label, icon, tooltip]; the first two raise, the last two lower.
+const ARRANGE = [['top', 'To front', 'top', 'Bring to front (Ctrl+Shift+])'], ['1', 'Forward', 'up', 'Bring forward (Ctrl+])'], ['-1', 'Backward', 'down', 'Send backward (Ctrl+[)'], ['bottom', 'To back', 'bottom', 'Send to back (Ctrl+Shift+[)']];
 const WEIGHTS = { 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold' };
 
 export function createBuilder(ctx) {
@@ -19,7 +25,6 @@ export function createBuilder(ctx) {
   const B = { id: null, draft: null, saved: '', side: 'front', sel: null, undo: [], redo: [], pending: null, scale: 0.6, samples: true, el: null, top: null, keyHandler: null, raf: 0 };
   const CARD = { get w() { return B.draft?.card?.w || 638; }, get h() { return B.draft?.card?.h || 1013; } };   // portrait or landscape
   const landscape = () => CARD.w > CARD.h;
-  const sizeName = () => { const s = cardInfo(B.draft?.card).size; return s === 'custom' ? 'custom' : s; };
   const label = (e) => fieldInfo(e.field).label;
   const uid = () => 'e' + Math.random().toString(36).slice(2, 10);
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -60,6 +65,14 @@ export function createBuilder(ctx) {
   function clamp(e) {
     e.w = Math.max(16, Math.min(CARD.w, Math.round(e.w))); e.h = Math.max(16, Math.min(CARD.h, Math.round(e.h)));
     e.x = Math.max(0, Math.min(CARD.w - e.w, Math.round(e.x))); e.y = Math.max(0, Math.min(CARD.h - e.h, Math.round(e.y)));
+  }
+  // An opacity slider (lo–100 %) for obj[k], stored as 0.05–1; the key is dropped again at 100 % (solid, the default).
+  // Live while dragging, one undo step per drag.
+  const fade = (id, lbl, v, lo) => { const p = Math.round((v ?? 1) * 100); return `<label class="f"><span style="display:flex;justify-content:space-between">${lbl}<span class="num muted" id="${id}V">${p}%</span></span><input type="range" id="${id}" min="${lo}" max="100" value="${p}" aria-label="${lbl}"></label>`; };
+  function bindFade(id, obj, k) {
+    const inp = $(`#${id}`); if (!inp) return;
+    inp.oninput = () => { begin(); const p = +inp.value; if (p >= 100) delete obj[k]; else obj[k] = p / 100; $(`#${id}V`).textContent = `${p}%`; render(); };
+    inp.onchange = () => { end(); refresh(); };
   }
 
   // ---------- page ----------
@@ -163,8 +176,9 @@ export function createBuilder(ctx) {
       <div class="fieldset"><h3>${B.side === 'front' ? 'Front' : 'Back'} background</h3>
         ${B.side === 'back' ? `<label class="check" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="bBackOn" ${B.draft.back.enabled ? 'checked' : ''}><i></i></label><div><b>Print a back</b></div></label>` : ''}
         ${backOff ? '' : `<div class="tpl"><div class="tthumb" style="background-image:url('${assetUrl(side.background) || ''}');width:${Math.round(CARD.w * tk)}px;height:${Math.round(CARD.h * tk)}px"></div><div class="row" style="gap:6px"><button class="btn sm" id="bUp">${ICON.upload}${side.background ? 'Change' : 'Choose'} image</button>${side.background ? '<button class="btn sm ghost danger" id="bClr">Remove</button>' : ''}</div></div>
-        <label class="f" style="flex-direction:row;align-items:center;gap:10px">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>`}
-        <input type="file" id="bFile" accept="image/png,image/jpeg,image/webp" hidden></div>
+        <label class="f" style="flex-direction:row;align-items:center;gap:10px">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>
+        ${side.background ? fade('bBgOp', 'Image opacity', side.bgOpacity, 0) : ''}`}
+        <input type="file" id="bFile" accept="image/*" hidden></div>
       <div class="fieldset"><h3>Fields</h3>
         <div class="flist">${[...TICKABLE, ...customFields()].map(f => { const on = t.has(f); const sides = placed(f); const here = sides.includes(B.side);
           return `<div class="fld ${on ? 'on' : ''}"><label><input type="checkbox" data-tick="${f}" ${on ? 'checked' : ''}><span>${esc(fieldInfo(f).label)}</span></label>
@@ -190,15 +204,16 @@ export function createBuilder(ctx) {
     $('#bClr') && ($('#bClr').onclick = () => change(() => { B.draft[B.side].background = null; }));
     $('#bBg') && ($('#bBg').oninput = e => { begin(); B.draft[B.side].bgColor = e.target.value; render(); });
     $('#bBg') && ($('#bBg').onchange = () => { end(); refresh(); });
+    bindFade('bBgOp', side, 'bgOpacity');
     $('#bFile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       try {
-        const url = URL.createObjectURL(f); const im = await loadImage(url);
-        const r = await api('POST', '/api/assets', f, f.type || 'image/png');
+        const im = await templateImage(f);
+        const r = await api('POST', '/api/assets', im.blob, im.type);
         change(() => { B.draft[B.side].background = r.name; });
-        if (im && Math.abs(im.naturalWidth / im.naturalHeight - CARD.w / CARD.h) > 0.03) toast(`That image is ${im.naturalWidth} × ${im.naturalHeight} px. This ${landscape() ? 'landscape' : 'portrait'} ${sizeName()} card is ${CARD.w} × ${CARD.h} px, so it will be stretched to fit.`, 'err');
-        URL.revokeObjectURL(url);
+        toast(Math.abs(im.w / im.h - CARD.w / CARD.h) > 0.03 ? `Background set. The picture is a different shape from the card, so its edges are trimmed to fill it. Save the template to keep it.` : 'Background set. Save the template to keep it.', 'ok');
       } catch (err) { toast(err.message, 'err'); }
+      e.target.value = '';   // choosing the same file again still works
     };
     $$('[data-tick]', L).forEach(cb => cb.onchange = () => {
       const f = cb.dataset.tick;
@@ -219,9 +234,9 @@ export function createBuilder(ctx) {
     const e = selEl();
     if (!e) {
       const users = S.clients.filter(c => (c.templateIds || []).includes(B.id));
-      const onSide = els();
+      const onSide = els().reverse();   // top-most first, as they stack on the card
       const sub = (x) => x.field === 'text' ? esc(x.text || '') : x.field === 'barcode' ? `${BARCODE_TYPES.find(t => t[0] === x.symbol)?.[1] || ''} · ${x.source === 'text' ? 'fixed text' : esc(fieldInfo(x.source).label)}` : `${x.w} × ${x.h} px`;
-      R.innerHTML = `<div class="fieldset"><h3>On the ${B.side}</h3>${onSide.length ? `<div class="stack" style="gap:6px">${onSide.map(x => `<button class="ditem" data-sel="${esc(x.id)}" style="padding:8px 10px"><span class="fdot ${x.field === 'photo' ? 'ph' : ''}"></span><div style="min-width:0"><b>${esc(label(x))}</b><span>${sub(x)}</span></div></button>`).join('')}</div>` : '<span class="hint">Nothing on this side yet.</span>'}</div>
+      R.innerHTML = `<div class="fieldset"><h3>On the ${B.side}${onSide.length > 1 ? ' <small class="muted">top to bottom</small>' : ''}</h3>${onSide.length ? `<div class="stack" style="gap:6px">${onSide.map(x => `<button class="ditem" data-sel="${esc(x.id)}" style="padding:8px 10px"><span class="fdot ${x.field === 'photo' ? 'ph' : ''}"></span><div style="min-width:0"><b>${esc(label(x))}</b><span>${sub(x)}</span></div></button>`).join('')}</div>` : '<span class="hint">Nothing on this side yet.</span>'}</div>
         <div class="fieldset"><h3>Used by</h3>${users.length ? users.map(c => `<a class="chip info" href="#/clients/${c.id}/people" style="text-decoration:none">${esc(c.name)}${c.defaultDesignId === B.id ? ' · default' : ''}</a>`).join(' ') : '<span class="hint">Not assigned yet.</span>'}
           <button class="btn sm" id="bAssign2" style="align-self:flex-start">${ICON.clients}Assign to clients</button></div>
         <div class="fieldset"><h3>Card</h3><span class="hint num">${cardLabel(B.draft.card)} · ${cardDims(B.draft.card)}</span></div>`;
@@ -230,6 +245,7 @@ export function createBuilder(ctx) {
       return;
     }
     const kind = ['photo', 'image', 'box', 'barcode'].includes(e.field) ? e.field : 'text';
+    const order = els(), at = order.indexOf(e);   // its place in this side's stacking order (last = on top)
     const num = (k, lbl, attrs = '') => `<label class="f">${lbl}<input class="input sm num" type="number" data-k="${k}" value="${e[k] ?? 0}" ${attrs}></label>`;
     const seg = (k, opts) => `<div class="seg sm" data-seg="${k}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${String(e[k] ?? '') === String(v) ? 'on' : ''}" title="${l}">${l}</button>`).join('')}</div>`;
     const colour = (k, lbl) => `<label class="f" style="flex-direction:row;align-items:center;gap:8px">${lbl}<input type="color" class="input" data-k="${k}" data-str value="${e[k] || '#000000'}"></label>`;
@@ -243,7 +259,7 @@ export function createBuilder(ctx) {
           <button class="btn sm" id="b34" style="align-self:flex-start">Make 3:4 portrait</button></div>`,
       image: `<div class="fieldset"><h3>Image</h3><div class="row" style="gap:6px"><button class="btn sm" id="bImg">${ICON.upload}${e.asset ? 'Change' : 'Choose'} image</button></div>
           <div class="f"><span>Fit</span>${seg('fit', [['contain', 'Fit inside'], ['cover', 'Fill box']])}</div>
-          <input type="file" id="bImgFile" accept="image/png,image/jpeg,image/webp" hidden></div>`,
+          <input type="file" id="bImgFile" accept="image/*" hidden></div>`,
       box: `<div class="fieldset"><h3>Shape</h3><div class="row" style="gap:10px">${colour('fill', 'Fill')}${toggle('noFill', 'No fill')}</div>
           <div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div><div class="row">${colour('borderColor', 'Border')}</div></div>`,
       barcode: `<div class="fieldset"><h3>Barcode</h3>
@@ -268,7 +284,11 @@ export function createBuilder(ctx) {
       ${panels[kind]}
       <div class="fieldset"><h3>Position and size <small class="muted">px</small></h3><div class="grid2">${num('x', 'X')}${num('y', 'Y')}${num('w', 'Width', 'min="16"')}${num('h', 'Height', 'min="16"')}</div>
         <div class="stack" style="gap:6px"><button class="btn sm" id="bCx" style="justify-content:flex-start">${IC.ch}Centre horizontally</button><button class="btn sm" id="bCy" style="justify-content:flex-start">${IC.cv}Centre vertically</button>
-          <div class="row" style="gap:6px"><button class="btn sm" id="bCc">${IC.cc}Centre on card</button><button class="btn sm" id="bFw">Full width</button></div></div></div>`;
+          <div class="row" style="gap:6px"><button class="btn sm" id="bCc">${IC.cc}Centre on card</button><button class="btn sm" id="bFw">Full width</button></div></div></div>
+      <div class="fieldset"><h3>Arrange</h3><div class="grid2" style="gap:6px">${ARRANGE.map(([d, l, ic, tip], i) => `<button class="btn sm" data-arr="${d}" title="${tip}" style="justify-content:flex-start" ${(i < 2 ? at === order.length - 1 : at === 0) ? 'disabled' : ''}>${IC[ic]}${l}</button>`).join('')}</div>
+        ${fade('bOp', 'Opacity', e.opacity, 5)}</div>`;
+    $$('[data-arr]', R).forEach(b => b.onclick = () => arrange(b.dataset.arr));
+    bindFade('bOp', e, 'opacity');
     $('#bRm').onclick = () => removeSel();
     $('#bCx').onclick = () => centre('h');
     $('#bCy').onclick = () => centre('v');
@@ -278,7 +298,8 @@ export function createBuilder(ctx) {
     $('#bImg') && ($('#bImg').onclick = () => $('#bImgFile').click());
     $('#bImgFile') && ($('#bImgFile').onchange = async ev => {
       const f = ev.target.files[0]; if (!f) return;
-      try { const r = await api('POST', '/api/assets', f, f.type || 'image/png'); change(() => { e.asset = r.name; }); } catch (err) { toast(err.message, 'err'); }
+      try { const im = await templateImage(f); const r = await api('POST', '/api/assets', im.blob, im.type); change(() => { e.asset = r.name; }); } catch (err) { toast(err.message, 'err'); }
+      ev.target.value = '';
     });
     if (kind === 'barcode') {   // say so when the sample can't be encoded (e.g. letters in a numeric-only code)
       const err = drawBarcode(document.createElement('canvas').getContext('2d'), e, barcodeValue(e, {}, { samples: true }));
@@ -301,6 +322,16 @@ export function createBuilder(ctx) {
       if (dir !== 'h') e.y = Math.round((CARD.h - e.h) / 2);
     });
     toast(dir === 'h' ? 'Centred horizontally' : dir === 'v' ? 'Centred vertically' : 'Centred on the card');
+  }
+  // Move the selected element within its side's stacking order: 'top' | 'bottom' | '1' (forward) | '-1' (backward).
+  // Elements are drawn in list order, so this refills this side's slots in B.draft.elements; the other side keeps its order.
+  function arrange(dir) {
+    const e = selEl(); if (!e) return;
+    const same = els(), i = same.indexOf(e), j = dir === 'top' ? same.length - 1 : dir === 'bottom' ? 0 : i + +dir;
+    if (j === i || j < 0 || j >= same.length) return;
+    same.splice(i, 1); same.splice(j, 0, e);
+    let k = 0;
+    change(() => { B.draft.elements = B.draft.elements.map(x => x.side === B.side ? same[k++] : x); });
   }
   function paintAlign() {
     const box = $('#bAlign'); if (!box) return;
@@ -421,6 +452,7 @@ export function createBuilder(ctx) {
     if (mod && ev.key.toLowerCase() === 'z' && !ev.shiftKey) { ev.preventDefault(); undo(); return; }
     if (mod && (ev.key.toLowerCase() === 'y' || (ev.key.toLowerCase() === 'z' && ev.shiftKey))) { ev.preventDefault(); redo(); return; }
     const e = selEl(); if (!e) return;
+    if (mod && (ev.code === 'BracketRight' || ev.code === 'BracketLeft')) { ev.preventDefault(); arrange(ev.code === 'BracketRight' ? (ev.shiftKey ? 'top' : '1') : (ev.shiftKey ? 'bottom' : '-1')); return; }   // code: with Shift the key reads } / {
     if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); removeSel(); return; }
     if (ev.key === 'Escape') { B.sel = null; refresh(); return; }
     const step = ev.shiftKey ? 10 : 1;

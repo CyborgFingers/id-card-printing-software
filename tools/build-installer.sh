@@ -39,7 +39,7 @@ rm -rf "$ROOT/build/publish"
 
 # 2. .NET runtimes, checked against the SHA-512 in Microsoft's releases.json (cached in installer/redist)
 mkdir -p "$REDIST"
-curl -fsSL https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json -o "$WORK/releases.json"
+curl -fsSL https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json -o "$WORK/releases.json"
 python3 -I - "$WORK/releases.json" "$DOTNET_VERSION" > "$WORK/runtimes.txt" <<'PY'
 import json, sys
 release = next(r for r in json.load(open(sys.argv[1]))["releases"] if r["release-version"] == sys.argv[2])

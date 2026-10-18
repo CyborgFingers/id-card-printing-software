@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, idKey } = await import('../../web/js/csv.js');
-const { formatDate } = await import('../../web/js/render.js');
+const { formatDate, layoutText } = await import('../../web/js/render.js');
 
 test('CSV: NZ day-first dates and custom columns', () => {
   assert.equal(isoDate('31/03/2027'), '2027-03-31');
@@ -59,6 +59,23 @@ test('Help topics are built from the current user guide', async () => {
   assert.ok(topics.length >= 15 && topics.every(t => t.summary && t.html && t.text));
   assert.equal(fs.readFileSync(OUT, 'utf8'), render(topics), 'docs/USER-GUIDE.md changed: run node tools/gen-help.mjs');
   assert.ok(!/<(script|img|iframe)/i.test(topics.map(t => t.html).join('')));
+});
+
+test('text always fits its box: shrink, then wrap a long name (also after a hyphen), then shrink further', () => {
+  // A stand-in canvas: each character is half the font size wide; capitals 0.7 and descenders 0.2 of it.
+  const ctx = { font: '', letterSpacing: '', measureText(t) { const s = +this.font.match(/([\d.]+)px/)[1]; return { width: t.length * s / 2, actualBoundingBoxAscent: s * 0.7, actualBoundingBoxDescent: s * 0.2 }; } };
+  const box = { field: 'lastName', x: 10, y: 20, w: 300, h: 120, size: 60, minSize: 40, valign: 'middle' };
+  const check = (value) => {
+    const r = layoutText(ctx, box, value); ctx.font = `500 ${r.size}px x`;
+    assert.ok(r.lines.every(l => ctx.measureText(l).width <= box.w), `${value} is too wide`);
+    assert.ok(r.top >= box.y && r.top + r.cap + (r.lines.length - 1) * r.lh + r.size * 0.2 <= box.y + box.h, `${value} leaves its box`);
+    return [r.size, r.lines];
+  };
+  assert.deepEqual(check('Ng'), [60, ['Ng']]);
+  assert.deepEqual(check('Sampleton-Placeholderson'), [40, ['Sampleton-', 'Placeholderson']]);
+  assert.deepEqual(check('Jane Sample-Placeholderson'), [40, ['Jane Sample-', 'Placeholderson']]);
+  const [size, lines] = check('Supercalifragilisticexpialidocious');   // nowhere to break: smaller than the smallest size, but inside the box
+  assert.ok(size < 40 && lines.length === 1);
 });
 
 test('card dates in each format', () => {

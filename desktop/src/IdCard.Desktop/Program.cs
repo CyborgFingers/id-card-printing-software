@@ -65,6 +65,7 @@ static class Program
         RunInstaller = RunInstaller,
         Stopped = stopped,
         Notify = notify,
+        LicenceAcceptedInSetup = true,   // the setup's licence page must be accepted to install
     };
 
     /// <summary>"--exit" (used by the uninstaller): asks a running copy to save and close, waiting up to 10 seconds.</summary>

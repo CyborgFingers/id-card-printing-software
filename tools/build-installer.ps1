@@ -42,7 +42,7 @@ function Assert-MicrosoftSigned([string]$File) {
 
 # 2. .NET runtimes
 New-Item -ItemType Directory -Force $Redist | Out-Null
-$releases = Invoke-RestMethod 'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json'
+$releases = Invoke-RestMethod 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'
 $release = $releases.releases | Where-Object { $_.'release-version' -eq $DotnetVersion }
 if (-not $release) { throw ".NET $DotnetVersion isn't in releases.json" }
 $runtimes = @($release.windowsdesktop.files | Where-Object name -eq 'windowsdesktop-runtime-win-x64.exe') +

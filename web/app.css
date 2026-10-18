@@ -475,7 +475,7 @@ a.tcard:hover { border-color: var(--brand-mid); box-shadow: 0 6px 24px color-mix
 .bel .btag { position: absolute; left: -1px; bottom: 100%; margin-bottom: 3px; font-size: 10.5px; font-weight: 800; letter-spacing: .02em; color: #fff; background: var(--brand); padding: 1px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; }
 .bel.ph .btag { background: var(--ok); }
 .bel:hover .btag, .bel.sel .btag { opacity: 1; }
-.hd { position: absolute; width: 11px; height: 11px; background: #fff; border: 2px solid var(--brand); border-radius: 3px; }
+.hd { position: absolute; z-index: 1; width: 11px; height: 11px; background: #fff; border: 2px solid var(--brand); border-radius: 3px; }   /* reachable when another element is stacked over the selected one */
 .hd.nw { left: -7px; top: -7px; cursor: nwse-resize; } .hd.n { left: calc(50% - 6px); top: -7px; cursor: ns-resize; } .hd.ne { right: -7px; top: -7px; cursor: nesw-resize; }
 .hd.e { right: -7px; top: calc(50% - 6px); cursor: ew-resize; } .hd.se { right: -7px; bottom: -7px; cursor: nwse-resize; } .hd.s { left: calc(50% - 6px); bottom: -7px; cursor: ns-resize; }
 .hd.sw { left: -7px; bottom: -7px; cursor: nesw-resize; } .hd.w { left: -7px; top: calc(50% - 6px); cursor: ew-resize; }
