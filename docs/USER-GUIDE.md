@@ -129,7 +129,7 @@ Click a field on the card to select it. The right panel shows its settings:
 
 - **Text**: font, weight, size, colour, **CAPITALS**, alignment, rotation and letter spacing. Text always stays inside its box: a long name shrinks down to the **Smallest** size, then moves onto two lines if the box has room, then shrinks further.
 - **Dates**: choose the **Date format**, such as 31/03/2027 or 31 Mar 2027.
-- **Photo**: corner radius, border, the colour shown when there's no photo, and **Make 3:4 portrait** for the usual photo shape.
+- **Photo**: under **Photos**, choose **Fill the frame** (photos of another shape are trimmed at the edges) or **Whole photo** (nothing is cut off; any space shows the frame's colour). Also corner radius, border, the frame's colour, and **Make 3:4 portrait** for the usual photo shape. Each person's photo can still be moved and zoomed when you add or edit them.
 - **Position and size**: exact X, Y, width and height in pixels, plus **Centre horizontally**, **Centre vertically**, **Centre on card** and **Full width**.
 
 Use the bin button to remove the selected field from the card.
@@ -224,11 +224,13 @@ The card preview on the right shows the card as it will print.
 
 ### Position the photo
 
-The photo fills the card's photo frame automatically. To adjust it:
+The photo is fitted to the card's photo frame automatically, as the template says: filling the frame, or showing the whole photo. To adjust one person's photo:
 
 - Drag the photo on the card preview to move it.
-- Use **Zoom**, or scroll on the photo, to zoom in.
-- Choose **Reset position** to start again, or **Remove photo** to take it off.
+- Use **Zoom**, or scroll on the photo, to zoom in or out. Zoomed right out, the whole photo shows and nothing is cut off.
+- Choose **Whole photo** to show all of it in one step, **Reset position** to go back to the template's fit, or **Remove photo** to take it off.
+
+Any space around a photo that doesn't fill the frame shows the frame's colour, set in the template.
 
 Photos are shrunk to a sensible size when you add them, so large camera photos are fine.
 
@@ -273,7 +275,7 @@ Dates can be written as 31/03/2027 or 2027-03-31.
 Name each photo the same as the person's ID: the person with ID 7 gets `7.jpg`.
 
 - Leading zeros don't matter, so `007.jpg` also matches ID 7.
-- Photos can be JPG, PNG, WebP, BMP or GIF, of any size or shape. Each one is fitted to the card's photo frame.
+- Photos can be JPG, PNG, WebP, BMP or GIF, of any size or shape. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), and you can adjust any of them afterwards.
 - Only the file name matters. Nothing needs to be written on the photo.
 
 Instead of an ID, you can also put each photo's file name in the **ID Photo** column, or name the photos after the people, such as `Jane Doe.jpg`.

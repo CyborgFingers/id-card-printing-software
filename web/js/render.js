@@ -109,15 +109,20 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
-// Geometry used both for drawing and for drag-to-pan limits.
+// Geometry used both for drawing and for drag-to-pan limits. The template's photo box either fills its frame
+// (fit 'cover', trimming the edges) or shows the whole photo ('contain'); a person's zoom goes from the whole
+// photo (minZoom) up to 4 times that starting size. A photo bigger than the frame moves until an edge meets the
+// frame; a smaller one moves anywhere inside it.
 export function photoGeometry(img, box, adj = {}) {
-  const zoom = Math.max(1, adj.zoom || 1);
-  const scale = Math.max(box.w / img.naturalWidth, box.h / img.naturalHeight) * zoom;
+  const fill = Math.max(box.w / img.naturalWidth, box.h / img.naturalHeight), whole = Math.min(box.w / img.naturalWidth, box.h / img.naturalHeight);
+  const base = box.fit === 'contain' ? whole : fill, minZoom = whole / base;
+  const zoom = Math.max(minZoom, Math.min(4, adj.zoom || 1));
+  const scale = base * zoom;
   const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-  const maxX = (dw - box.w) / 2, maxY = (dh - box.h) / 2;
+  const maxX = Math.abs(dw - box.w) / 2, maxY = Math.abs(dh - box.h) / 2;
   const ox = Math.max(-maxX, Math.min(maxX, (adj.ox || 0) * box.w));
   const oy = Math.max(-maxY, Math.min(maxY, (adj.oy || 0) * box.h));
-  return { dx: box.x + (box.w - dw) / 2 + ox, dy: box.y + (box.h - dh) / 2 + oy, dw, dh, maxX, maxY };
+  return { dx: box.x + (box.w - dw) / 2 + ox, dy: box.y + (box.h - dh) / 2 + oy, dw, dh, maxX, maxY, minZoom };
 }
 // The first photo box on the front (used for drag-to-position in the person editor).
 export const photoBox = (design) => (design?.elements || []).find(e => e.field === 'photo' && e.side === 'front') || null;

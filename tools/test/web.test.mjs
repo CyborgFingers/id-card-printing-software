@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, idKey } = await import('../../web/js/csv.js');
-const { formatDate, layoutText } = await import('../../web/js/render.js');
+const { formatDate, layoutText, photoGeometry } = await import('../../web/js/render.js');
 
 test('CSV: NZ day-first dates and custom columns', () => {
   assert.equal(isoDate('31/03/2027'), '2027-03-31');
@@ -76,6 +76,18 @@ test('text always fits its box: shrink, then wrap a long name (also after a hyph
   assert.deepEqual(check('Jane Sample-Placeholderson'), [40, ['Jane Sample-', 'Placeholderson']]);
   const [size, lines] = check('Supercalifragilisticexpialidocious');   // nowhere to break: smaller than the smallest size, but inside the box
   assert.ok(size < 40 && lines.length === 1);
+});
+
+test('ID photos fill the frame or show whole, and zoom out to the whole photo', () => {
+  const img = { naturalWidth: 1600, naturalHeight: 1200 }, box = { x: 0, y: 0, w: 360, h: 480 };   // a landscape photo, a portrait frame
+  const fill = photoGeometry(img, box, {});
+  assert.deepEqual([fill.dw, fill.dh], [640, 480]);   // fills the frame: the sides are trimmed
+  assert.equal(fill.minZoom, 0.5625);
+  const out = photoGeometry(img, box, { zoom: 0.1, oy: 1 });   // zoomed further out than possible, and moved down
+  assert.deepEqual([out.dw, out.dh, out.dx, out.dy], [360, 270, 0, 210]);   // the whole photo, resting on the bottom of the frame
+  const whole = photoGeometry(img, { ...box, fit: 'contain' }, {});
+  assert.deepEqual([whole.dw, whole.dh, whole.minZoom], [360, 270, 1]);   // the template shows whole photos by default
+  assert.deepEqual([photoGeometry(img, box, { zoom: 9 }).dw], [2560]);   // at most 4 times
 });
 
 test('card dates in each format', () => {

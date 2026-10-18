@@ -400,7 +400,7 @@ function enablePhotoPan(canvas, getState, onChange) {
     onChange();
   });
   canvas.addEventListener('pointerup', () => drag = null);
-  canvas.addEventListener('wheel', e => { const st = getState(); if (!st.img) return; e.preventDefault(); st.adj.zoom = Math.max(1, Math.min(4, (st.adj.zoom || 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06))); onChange(true); }, { passive: false });
+  canvas.addEventListener('wheel', e => { const st = getState(); const box = photoBox(st.design); if (!st.img || !box) return; e.preventDefault(); const { minZoom } = photoGeometry(st.img, box, st.adj); st.adj.zoom = Math.max(minZoom, Math.min(4, (st.adj.zoom || 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06))); onChange(true); }, { passive: false });
 }
 const clampN = (v, m) => Math.max(-m, Math.min(m, v));
 
@@ -637,7 +637,7 @@ function personModal(c, p) {
       <div class="drop" id="eDrop" tabindex="0" role="button" aria-label="Choose ID photo"><div class="ph" id="ePh">${p?.hasPhoto ? `<img src="${photoUrl(p)}" alt="">` : ICON.image}</div><div><b id="eName">${st.hasPhoto ? esc(st.photoName || 'Photo saved') : 'Drop a photo here or click to choose'}</b></div></div>
       <input type="file" id="eFile" accept="image/*" hidden>
       <label class="f">Zoom<input type="range" id="eZoom" min="1" max="4" step="0.01" value="${st.adj.zoom}"></label>
-      <div class="row"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
+      <div class="row"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm" id="eWhole" ${st.hasPhoto ? '' : 'hidden'}>${ICON.image}Whole photo</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
       <label class="f">Notes<textarea class="input" id="eNotes" rows="2">${esc(st.notes)}</textarea></label>
       ${p ? `<div class="f"><span>Card</span><div class="row" style="gap:10px;flex-wrap:wrap"><select class="input" id="eStatus" style="max-width:190px">${[['active', 'Active'], ['lost', 'Lost or stolen'], ['returned', 'Returned']].map(([k, l]) => `<option value="${k}" ${p.cardStatus === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="hint">${p.printCount ? `${plural(p.printCount, 'card')} printed, last ${fmtDateTime(p.lastPrintedAt)}` : 'No card printed yet'}</span></div><div id="eHist" class="stack" style="gap:4px"></div></div>` : ''}</div>
@@ -649,7 +649,9 @@ function personModal(c, p) {
       ...(d ? [{ label: 'Save and print', kind: 'primary', onClick: () => save(true) }] : [])] });
   const el = m.el; const cv = $('#eCv', el);
   const draw = () => cv && drawCard(cv, d, 'front', { ...st, ...st.extra, firstName: st.firstName || 'First', lastName: st.lastName || 'Last name', photo: st.img, adj: st.adj });
-  (async () => { if (p?.hasPhoto) { st.img = await loadImage(photoUrl(p)); } draw(); })();
+  // The zoom slider runs from the whole photo showing up to 4 times the template's starting size.
+  const zoomRange = () => { const b = photoBox(d); const z = $('#eZoom', el); if (st.img && b) { z.min = photoGeometry(st.img, b, st.adj).minZoom.toFixed(3); z.value = st.adj.zoom; } };
+  (async () => { if (p?.hasPhoto) { st.img = await loadImage(photoUrl(p)); zoomRange(); } draw(); })();
   $('#eFirst', el).oninput = e => { st.firstName = e.target.value; draw(); };
   $('#eLast', el).oninput = e => { st.lastName = e.target.value; draw(); };
   $$('[data-pf]', el).forEach(i => i.oninput = e => { st[i.dataset.pf] = e.target.value; draw(); });
@@ -670,7 +672,7 @@ function personModal(c, p) {
   }
   const pick = async (f) => {
     if (!f) return;
-    try { const r = await shrinkPhoto(f); Object.assign(st, { img: r.img, photoData: r.dataUrl, photoName: r.name, hasPhoto: true, adj: { zoom: 1, ox: 0, oy: 0 } }); $('#ePh', el).innerHTML = `<img src="${r.dataUrl}" alt="">`; $('#eName', el).textContent = r.name; $('#eZoom', el).value = 1; $('#eRemove', el).hidden = false; draw(); }
+    try { const r = await shrinkPhoto(f); Object.assign(st, { img: r.img, photoData: r.dataUrl, photoName: r.name, hasPhoto: true, adj: { zoom: 1, ox: 0, oy: 0 } }); $('#ePh', el).innerHTML = `<img src="${r.dataUrl}" alt="">`; $('#eName', el).textContent = r.name; zoomRange(); $('#eRemove', el).hidden = false; $('#eWhole', el).hidden = false; draw(); }
     catch (e) { toast(e.message, 'err'); }
   };
   const drop = $('#eDrop', el);
@@ -680,7 +682,8 @@ function personModal(c, p) {
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
   $('#eZoom', el).oninput = e => { st.adj.zoom = +e.target.value; draw(); };
   $('#eReset', el).onclick = () => { st.adj = { zoom: 1, ox: 0, oy: 0 }; $('#eZoom', el).value = 1; draw(); };
-  $('#eRemove', el).onclick = () => { Object.assign(st, { img: null, photoData: null, photoName: '', hasPhoto: false }); $('#ePh', el).innerHTML = ICON.image; $('#eName', el).textContent = 'Drop a photo here or click to choose'; $('#eRemove', el).hidden = true; draw(); };
+  $('#eWhole', el).onclick = () => { const b = photoBox(d); if (!st.img || !b) return; st.adj = { zoom: photoGeometry(st.img, b, {}).minZoom, ox: 0, oy: 0 }; $('#eZoom', el).value = st.adj.zoom; draw(); };
+  $('#eRemove', el).onclick = () => { Object.assign(st, { img: null, photoData: null, photoName: '', hasPhoto: false }); $('#ePh', el).innerHTML = ICON.image; $('#eName', el).textContent = 'Drop a photo here or click to choose'; $('#eRemove', el).hidden = true; $('#eWhole', el).hidden = true; draw(); };
   enablePhotoPan(cv, () => ({ img: st.img, adj: st.adj, design: d }), (z) => { if (z) $('#eZoom', el).value = st.adj.zoom; draw(); });
   setTimeout(() => $('#eFirst', el).focus(), 30);
   async function save(andPrint) {

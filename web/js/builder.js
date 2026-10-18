@@ -254,7 +254,8 @@ export function createBuilder(ctx) {
     const info = fieldInfo(e.field);
     const sources = [...new Set(['staffId', ...[...ticked()].filter(k => k !== 'photo'), ...customFields()])].map(k => [k, fieldInfo(k).label]);
     const panels = {
-      photo: `<div class="fieldset"><h3>Style</h3><div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div>
+      photo: `<div class="fieldset"><h3>Photos</h3><div class="seg sm" data-seg="fit">${[['cover', 'Fill the frame'], ['contain', 'Whole photo']].map(([v, l]) => `<button type="button" data-v="${v}" class="${(e.fit || 'cover') === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+        <div class="fieldset"><h3>Style</h3><div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div>
           <div class="row">${colour('borderColor', 'Border')}${colour('bgColor', 'Empty')}</div>
           <button class="btn sm" id="b34" style="align-self:flex-start">Make 3:4 portrait</button></div>`,
       image: `<div class="fieldset"><h3>Image</h3><div class="row" style="gap:6px"><button class="btn sm" id="bImg">${ICON.upload}${e.asset ? 'Change' : 'Choose'} image</button></div>

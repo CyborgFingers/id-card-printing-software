@@ -197,6 +197,7 @@ public sealed partial class AppService
             if (field == "photo")
             {
                 o["radius"] = Num(e["radius"], 0, 500, 0); o["borderWidth"] = Num(e["borderWidth"], 0, 60, 0); o["borderColor"] = Colour(e["borderColor"], "#00529F"); o["bgColor"] = Colour(e["bgColor"], "#e9eef4");
+                o["fit"] = Js.AsString(e["fit"]) == "contain" ? "contain" : "cover";   // fill the frame (trim the edges) or show the whole photo
             }
             else if (field == "image")
             {
