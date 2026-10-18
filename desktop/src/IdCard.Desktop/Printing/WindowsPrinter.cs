@@ -125,12 +125,12 @@ public sealed partial class WindowsPrinter : IPrinter
     static void DrawCard(PrintPageEventArgs e, Image img)
     {
         var g = e.Graphics!;
+        var r = RealPage(g, e.PageBounds);
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.SmoothingMode = SmoothingMode.HighQuality;
         // The origin is the printable area's corner; move it to the paper's corner so the card fills the page.
         g.TranslateTransform(-e.PageSettings.HardMarginX, -e.PageSettings.HardMarginY);
-        var r = e.PageBounds;
         if ((r.Height >= r.Width) != (img.Height >= img.Width))
         {
             // Landscape card on the portrait page: turn it a quarter so it fills the page.
@@ -143,6 +143,21 @@ public sealed partial class WindowsPrinter : IPrinter
             g.DrawImage(img, 0, 0, r.Width, r.Height);
         }
     }
+
+    /// <summary>The paper the driver is really printing on, in hundredths of an inch. It can differ a little from the
+    /// size asked for (a PDF printer rounds a CR80 card to 55 × 85 mm), and the card must fill the real page edge to edge.</summary>
+    static SizeF RealPage(Graphics g, Rectangle asked)
+    {
+        var hdc = g.GetHdc();
+        try
+        {
+            int w = GetDeviceCaps(hdc, PhysicalWidth), h = GetDeviceCaps(hdc, PhysicalHeight), dpiX = GetDeviceCaps(hdc, LogPixelsX), dpiY = GetDeviceCaps(hdc, LogPixelsY);
+            return w > 0 && h > 0 && dpiX > 0 && dpiY > 0 ? new SizeF(w * 100f / dpiX, h * 100f / dpiY) : asked.Size;
+        }
+        finally { g.ReleaseHdc(hdc); }
+    }
+    const int LogPixelsX = 88, LogPixelsY = 90, PhysicalWidth = 110, PhysicalHeight = 111;
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern int GetDeviceCaps(IntPtr hdc, int index);
 
     /// <summary>Removes this printer's queued job(s) with this document name. A job that has already
     /// finished is fine; any other failure throws.</summary>
