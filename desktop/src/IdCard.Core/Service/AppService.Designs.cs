@@ -169,7 +169,18 @@ public sealed partial class AppService
         static JsonNode Num(JsonNode? v, double lo, double hi, double def) => Js.NumNode(Js.Num(v, lo, hi, def));
         // Opacity (faded backgrounds and elements) is kept only when it isn't fully solid, so older templates read the same.
         static JsonObject Faded(JsonObject o, string key, JsonNode? v, double lo) { var a = Js.Num(v, lo, 1, 1); if (a < 1) o[key] = Js.NumNode(Math.Round(a, 2)); return o; }
-        static JsonObject Side(JsonObject from, JsonObject side) => Faded(side, "bgOpacity", from["bgOpacity"], 0);
+        // A picture's Darkness, Contrast and Colour (-50..50), kept only when not 0: the background (bgDarkness...) or a logo or photo.
+        static JsonObject Toned(JsonObject o, JsonObject from, string prefix = "")
+        {
+            foreach (var k in (string[])["Darkness", "Contrast", "Colour"])
+            {
+                var key = prefix.Length > 0 ? prefix + k : k.ToLowerInvariant();
+                var v = (int)Math.Round(Js.Num(from[key], -50, 50, 0));
+                if (v != 0) o[key] = v;
+            }
+            return o;
+        }
+        static JsonObject Side(JsonObject from, JsonObject side) => Toned(Faded(side, "bgOpacity", from["bgOpacity"], 0), from, "bg");
         var card = CleanCard(d["card"]);
         double max = Math.Max(Js.ToNumber(card["w"]), Js.ToNumber(card["h"])), maxSize = Math.Max(2000, 2 * max);
         var front = Js.Obj(d["front"]); var back = Js.Obj(d["back"]);
@@ -198,10 +209,12 @@ public sealed partial class AppService
             {
                 o["radius"] = Num(e["radius"], 0, 500, 0); o["borderWidth"] = Num(e["borderWidth"], 0, 60, 0); o["borderColor"] = Colour(e["borderColor"], "#00529F"); o["bgColor"] = Colour(e["bgColor"], "#e9eef4");
                 o["fit"] = Js.AsString(e["fit"]) == "contain" ? "contain" : "cover";   // fill the frame (trim the edges) or show the whole photo
+                Toned(o, e);
             }
             else if (field == "image")
             {
                 o["asset"] = Js.Str(e["asset"], 80) is { Length: > 0 } a ? a : null; o["fit"] = Js.AsString(e["fit"]) == "cover" ? "cover" : "contain";
+                Toned(o, e);
             }
             else if (field == "box")
             {

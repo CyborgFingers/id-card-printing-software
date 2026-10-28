@@ -6,8 +6,10 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Drawing.Printing;
 using System.Management;
+using System.Runtime.InteropServices;
 using IdCard.Printing;
 
 namespace IdCard.Desktop.Printing;
@@ -24,14 +26,16 @@ public sealed partial class WindowsPrinter : IPrinter
     public async Task<PrintResult> PrintAsync(PrintJob job, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var printer = _settings().PrinterName;
+        var settings = _settings();
+        var printer = settings.PrinterName;
         if (string.IsNullOrWhiteSpace(printer))
             return new PrintResult(false, Error: "No printer is selected. Choose your card printer in Settings.");
+        var tuning = settings.Tuning ?? PrintTuning.None;
 
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { done.TrySetResult(PrintCard(printer, job)); }
+            try { done.TrySetResult(PrintCard(printer, job, tuning)); }
             catch (Exception ex) { done.TrySetException(ex); }
         }) { IsBackground = true, Name = "Card print" };
         thread.SetApartmentState(ApartmentState.STA);
@@ -53,7 +57,7 @@ public sealed partial class WindowsPrinter : IPrinter
 
     static string NotInstalled(string printer) => $"Printer '{printer}' is not installed on this PC.";
 
-    static string PrintCard(string printer, PrintJob job)
+    static string PrintCard(string printer, PrintJob job, PrintTuning tuning)
     {
         using var pd = new PrintDocument { DocumentName = job.DocName, PrintController = new StandardPrintController() };
         pd.PrinterSettings.PrinterName = printer;
@@ -62,8 +66,8 @@ public sealed partial class WindowsPrinter : IPrinter
         var pages = new List<Image>();
         try
         {
-            pages.Add(Decode(job.Front, job.RotateFront));
-            if (job.Back is { Length: > 0 }) pages.Add(Decode(job.Back, job.RotateBack));
+            pages.Add(Decode(job.Front, job.RotateFront, tuning));
+            if (job.Back is { Length: > 0 }) pages.Add(Decode(job.Back, job.RotateBack, tuning));
 
             var paper = ChoosePaper(pd.PrinterSettings, job.Size);
             pd.DefaultPageSettings.PaperSize = paper;
@@ -82,7 +86,7 @@ public sealed partial class WindowsPrinter : IPrinter
             var i = 0;
             pd.PrintPage += (_, e) =>
             {
-                DrawCard(e, pages[i]);
+                DrawCard(e, pages[i], tuning.OverprintMm);
                 i++;
                 e.HasMorePages = i < pages.Count;
             };
@@ -105,7 +109,7 @@ public sealed partial class WindowsPrinter : IPrinter
         return new PaperSize(size.Name, width, height);
     }
 
-    static Bitmap Decode(byte[] png, bool rotate180)
+    static Bitmap Decode(byte[] png, bool rotate180, PrintTuning tuning)
     {
         Bitmap bmp;
         try
@@ -119,13 +123,28 @@ public sealed partial class WindowsPrinter : IPrinter
             throw new InvalidOperationException("The card image could not be read.");
         }
         if (rotate180) bmp.RotateFlip(RotateFlipType.Rotate180FlipNone);
+        if (tuning.ChangesColour) AdjustColour(bmp, tuning);
         return bmp;
     }
 
-    static void DrawCard(PrintPageEventArgs e, Image img)
+    static void AdjustColour(Bitmap bmp, PrintTuning tuning)
+    {
+        var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        try
+        {
+            var bytes = new byte[Math.Abs(data.Stride) * data.Height];
+            Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+            tuning.Apply(bytes);
+            Marshal.Copy(bytes, 0, data.Scan0, bytes.Length);
+        }
+        finally { bmp.UnlockBits(data); }
+    }
+
+    static void DrawCard(PrintPageEventArgs e, Image img, double overprintMm)
     {
         var g = e.Graphics!;
         var r = RealPage(g, e.PageBounds);
+        var o = (float)(overprintMm / 25.4 * 100);   // Settings > Print adjustments: this much bigger on every side
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.SmoothingMode = SmoothingMode.HighQuality;
@@ -136,11 +155,11 @@ public sealed partial class WindowsPrinter : IPrinter
             // Landscape card on the portrait page: turn it a quarter so it fills the page.
             g.TranslateTransform(r.Width, 0);
             g.RotateTransform(90);
-            g.DrawImage(img, 0, 0, r.Height, r.Width);
+            g.DrawImage(img, -o, -o, r.Height + 2 * o, r.Width + 2 * o);
         }
         else
         {
-            g.DrawImage(img, 0, 0, r.Width, r.Height);
+            g.DrawImage(img, -o, -o, r.Width + 2 * o, r.Height + 2 * o);
         }
     }
 

@@ -27,7 +27,6 @@ const POSITION = ['position', 'jobtitle', 'role', 'jobrole', 'designation'];
 const TITLE = ['title', 'salutation', 'honorific', 'prefix'];
 const ADDRESS = ['address', 'streetaddress', 'homeaddress', 'postaladdress'];
 const PHOTO = ['idphoto', 'photo', 'photofile', 'photofilename', 'image', 'imagefile', 'picture', 'pic', 'filename', 'file', 'photoname', 'idphotofile'];
-const ID = ['id', 'uuid', 'recordid', 'personid', 'photoid', 'importid'];   // only pairs the row with its photo (7 → 7.jpg); not saved
 
 // Dates as NZ spreadsheets write them (31/03/2027, 31-3-27) or YYYY-MM-DD; anything else is left for the service to reject.
 export function isoDate(v) {
@@ -46,7 +45,7 @@ export function readPeople(text, custom = []) {
   let li = head.findIndex(h => LAST.includes(h));
   let pi = head.findIndex(h => PHOTO.includes(h));
   const col = (list) => head.findIndex(h => list.includes(h));
-  const si = col(STAFF), poi = col(POSITION), ti = col(TITLE), ai = col(ADDRESS), ii = col(ID);
+  const si = col(STAFF), poi = col(POSITION), ti = col(TITLE), ai = col(ADDRESS);
   const ci = custom.map(f => [f, head.indexOf(norm(f.label))]).filter(([, i]) => i >= 0);
   let body = rows.slice(1); let warning = '';
   if (fi < 0 && li < 0) {
@@ -60,7 +59,6 @@ export function readPeople(text, custom = []) {
     firstName: cell(r, fi),
     lastName: cell(r, li),
     photoFile: cell(r, pi),
-    importId: cell(r, ii),
     staffId: cell(r, si),
     position: cell(r, poi),
     title: cell(r, ti),
@@ -70,8 +68,9 @@ export function readPeople(text, custom = []) {
   return { people, warning };
 }
 
-// An ID as a photo name: numbers lose their leading zeros, because Excel turns 007 into 7.
-export const idKey = (s) => String(s || '').toLowerCase().trim().replace(/^0+(?=\d+$)/, '');
+// A name as a photo name: letters and numbers only, any case, macrons and accents dropped
+// ("John Smith", "JOHN_SMITH" and "johnsmith" are the same; "Tūhoe" matches "Tuhoe").
+export const nameKey = (s) => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 // Matches a CSV photo reference (file name or full path) against the chosen photo files.
 export function buildPhotoIndex(files) {
@@ -80,17 +79,14 @@ export function buildPhotoIndex(files) {
     const n = f.name.toLowerCase(), base = n.replace(/\.[^.]+$/, '');
     map.set(n, f);
     map.set(base, f);
-    if (!map.has(idKey(base))) map.set(idKey(base), f);   // 007.jpg also answers to 7, unless there's a 7.jpg
+    if (!map.has(nameKey(base))) map.set(nameKey(base), f);
   }
   return map;
 }
 export function matchPhoto(index, person) {
   const ref = (person.photoFile || '').split(/[\\/]/).pop().toLowerCase().trim();
   if (ref) return index.get(ref) || index.get(ref.replace(/\.[^.]+$/, '')) || null;
-  const id = idKey(person.importId);
-  if (id && index.has(id)) return index.get(id);
-  // No file named: try "First Last", "First_Last", "Last_First" etc.
-  const f = person.firstName.toLowerCase(), l = person.lastName.toLowerCase();
-  for (const k of [`${f} ${l}`, `${f}_${l}`, `${f}.${l}`, `${f}-${l}`, `${l} ${f}`, `${l}_${f}`, `${l}, ${f}`, `${f}${l}`]) { const m = index.get(k); if (m) return m; }
-  return null;
+  // No file named: the photo is named after the person, first name then last name (or last name first).
+  const f = person.firstName, l = person.lastName;
+  return (nameKey(f + l) && index.get(nameKey(f + l))) || (nameKey(l + f) && index.get(nameKey(l + f))) || null;
 }

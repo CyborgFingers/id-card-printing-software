@@ -43,7 +43,7 @@ public sealed class PrinterRaw
     public string? MonitorError { get; init; }
 }
 
-public sealed record PrinterSettingsSnapshot(string PrinterName, int PollMs, int SimSeconds);
+public sealed record PrinterSettingsSnapshot(string PrinterName, int PollMs, int SimSeconds, PrintTuning? Tuning = null);
 
 /// <summary>A development printer whose faults can be switched on (ribbon out, jam...) to try the alerts.</summary>
 public interface ISimulatedPrinter { void SetCondition(string? condition); }

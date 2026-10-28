@@ -1,7 +1,7 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
 // Visual card template builder: pick a background per side, tick fields, drag them onto the
 // card, then move, resize and style them. Everything is drawn by the same renderer used for printing.
-import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, templateImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims } from './render.js';
+import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, templateImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims, photoSpec } from './render.js';
 
 const SNAP = 7;           // card pixels
 const TICKABLE = ['photo', 'firstName', 'lastName', 'staffId', 'position', 'title', 'address'];
@@ -19,6 +19,10 @@ const IC = {
 // Stacking order buttons: [direction for arrange(), label, icon, tooltip]; the first two raise, the last two lower.
 const ARRANGE = [['top', 'To front', 'top', 'Bring to front (Ctrl+Shift+])'], ['1', 'Forward', 'up', 'Bring forward (Ctrl+])'], ['-1', 'Backward', 'down', 'Send backward (Ctrl+[)'], ['bottom', 'To back', 'bottom', 'Send to back (Ctrl+Shift+[)']];
 const WEIGHTS = { 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold' };
+// A picture's Darkness, Contrast and Colour (-50..50): [label, left end, right end], and the keys on a side / on an element.
+const TONE = [['Darkness', 'Lighter', 'Darker'], ['Contrast', 'Less', 'More'], ['Colour', 'Weaker', 'Stronger']];
+const BG_TONE = ['bgDarkness', 'bgContrast', 'bgColour'], EL_TONE = ['darkness', 'contrast', 'colour'];
+const signed = (v) => v > 0 ? `+${v}` : `${v}`;
 
 export function createBuilder(ctx) {
   const { S, api, toast, modal, confirmBox, esc, ICON, refreshLists, $, $$, plural } = ctx;
@@ -74,6 +78,18 @@ export function createBuilder(ctx) {
     inp.oninput = () => { begin(); const p = +inp.value; if (p >= 100) delete obj[k]; else obj[k] = p / 100; $(`#${id}V`).textContent = `${p}%`; render(); };
     inp.onchange = () => { end(); refresh(); };
   }
+  // Tone sliders for a picture (obj[keys[i]], a number kept only when not 0), optionally under a heading row with the Reset.
+  // Live while dragging, one undo step per drag; `${id}R` puts all three back to 0 in one step.
+  const toneReset = (id, obj, keys) => `<button class="btn sm ghost" id="${id}R" ${keys.some(k => obj[k]) ? '' : 'disabled'}>Reset</button>`;
+  const tone = (id, obj, keys, title) => `<div class="tone">${title ? `<div class="val"><b>${title}</b>${toneReset(id, obj, keys)}</div>` : ''}${TONE.map(([l, lo, hi], i) => { const v = obj[keys[i]] || 0; return `<label class="f"><span class="val">${l}<span class="num muted" id="${id}${i}V">${signed(v)}</span></span><input type="range" id="${id}${i}" min="-50" max="50" step="1" list="${id}Z" value="${v}" aria-label="${l}" aria-valuetext="${signed(v)}"><span class="ends"><span>${lo}</span><span>${hi}</span></span></label>`; }).join('')}<datalist id="${id}Z"><option value="0"></option></datalist></div>`;
+  function bindTone(id, obj, keys) {
+    keys.forEach((k, i) => {
+      const inp = $(`#${id}${i}`); if (!inp) return;
+      inp.oninput = () => { begin(); const v = +inp.value; if (v) obj[k] = v; else delete obj[k]; inp.setAttribute('aria-valuetext', signed(v)); $(`#${id}${i}V`).textContent = signed(v); render(); };
+      inp.onchange = () => { end(); refresh(); };
+    });
+    const r = $(`#${id}R`); if (r) r.onclick = () => change(() => keys.forEach(k => delete obj[k]));
+  }
 
   // ---------- page ----------
   function mount(root, top, id) {
@@ -114,7 +130,11 @@ export function createBuilder(ctx) {
     if (!B.el || !document.body.contains(B.el)) return;
     paintBar(); paintSide(); paintLeft(); paintRight(); paintAlign(); paintOverlay(); render();
   }
+  // The ID photo size the front's photo frame expects ("360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait"), kept live while the frame is resized.
+  const specLine = (s) => s ? `${s.w} × ${s.h} px · ${s.mmW} × ${s.mmH} mm · ${s.shape ? `${s.shape} ` : ''}${s.orientation}` : '';   // breaks only before a "· " part
+  function paintSpec() { const el = $('#bSpec'); if (el) el.textContent = `At least ${specLine(photoSpec(B.draft))}`; }
   function render() {
+    paintSpec();
     cancelAnimationFrame(B.raf);
     B.raf = requestAnimationFrame(() => { const cv = $('#bCv'); if (cv) drawCard(cv, B.draft, B.side, {}, { samples: B.samples, placeholder: true }); });
   }
@@ -177,7 +197,7 @@ export function createBuilder(ctx) {
         ${B.side === 'back' ? `<label class="check" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="bBackOn" ${B.draft.back.enabled ? 'checked' : ''}><i></i></label><div><b>Print a back</b></div></label>` : ''}
         ${backOff ? '' : `<div class="tpl"><div class="tthumb" style="background-image:url('${assetUrl(side.background) || ''}');width:${Math.round(CARD.w * tk)}px;height:${Math.round(CARD.h * tk)}px"></div><div class="row" style="gap:6px"><button class="btn sm" id="bUp">${ICON.upload}${side.background ? 'Change' : 'Choose'} image</button>${side.background ? '<button class="btn sm ghost danger" id="bClr">Remove</button>' : ''}</div></div>
         <label class="f" style="flex-direction:row;align-items:center;gap:10px">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>
-        ${side.background ? fade('bBgOp', 'Image opacity', side.bgOpacity, 0) : ''}`}
+        ${side.background ? fade('bBgOp', 'Image opacity', side.bgOpacity, 0) + tone('bBgT', side, BG_TONE, 'Adjustments') : ''}`}
         <input type="file" id="bFile" accept="image/*" hidden></div>
       <div class="fieldset"><h3>Fields</h3>
         <div class="flist">${[...TICKABLE, ...customFields()].map(f => { const on = t.has(f); const sides = placed(f); const here = sides.includes(B.side);
@@ -205,6 +225,7 @@ export function createBuilder(ctx) {
     $('#bBg') && ($('#bBg').oninput = e => { begin(); B.draft[B.side].bgColor = e.target.value; render(); });
     $('#bBg') && ($('#bBg').onchange = () => { end(); refresh(); });
     bindFade('bBgOp', side, 'bgOpacity');
+    bindTone('bBgT', side, BG_TONE);
     $('#bFile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       try {
@@ -254,7 +275,8 @@ export function createBuilder(ctx) {
     const info = fieldInfo(e.field);
     const sources = [...new Set(['staffId', ...[...ticked()].filter(k => k !== 'photo'), ...customFields()])].map(k => [k, fieldInfo(k).label]);
     const panels = {
-      photo: `<div class="fieldset"><h3>Photos</h3><div class="seg sm" data-seg="fit">${[['cover', 'Fill the frame'], ['contain', 'Whole photo']].map(([v, l]) => `<button type="button" data-v="${v}" class="${(e.fit || 'cover') === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      photo: `<div class="fieldset"><h3>Photos</h3><div class="seg sm" data-seg="fit">${[['cover', 'Fill the frame'], ['contain', 'Whole photo']].map(([v, l]) => `<button type="button" data-v="${v}" class="${(e.fit || 'cover') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+          ${e.side === 'front' ? `<span class="hint num" id="bSpec">At least ${specLine(photoSpec(B.draft))}</span>` : ''}</div>
         <div class="fieldset"><h3>Style</h3><div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div>
           <div class="row">${colour('borderColor', 'Border')}${colour('bgColor', 'Empty')}</div>
           <button class="btn sm" id="b34" style="align-self:flex-start">Make 3:4 portrait</button></div>`,
@@ -287,9 +309,11 @@ export function createBuilder(ctx) {
         <div class="stack" style="gap:6px"><button class="btn sm" id="bCx" style="justify-content:flex-start">${IC.ch}Centre horizontally</button><button class="btn sm" id="bCy" style="justify-content:flex-start">${IC.cv}Centre vertically</button>
           <div class="row" style="gap:6px"><button class="btn sm" id="bCc">${IC.cc}Centre on card</button><button class="btn sm" id="bFw">Full width</button></div></div></div>
       <div class="fieldset"><h3>Arrange</h3><div class="grid2" style="gap:6px">${ARRANGE.map(([d, l, ic, tip], i) => `<button class="btn sm" data-arr="${d}" title="${tip}" style="justify-content:flex-start" ${(i < 2 ? at === order.length - 1 : at === 0) ? 'disabled' : ''}>${IC[ic]}${l}</button>`).join('')}</div>
-        ${fade('bOp', 'Opacity', e.opacity, 5)}</div>`;
+        ${fade('bOp', 'Opacity', e.opacity, 5)}</div>
+      ${['photo', 'image'].includes(kind) ? `<div class="fieldset"><h3>Adjustments<span class="sp"></span>${toneReset('bT', e, EL_TONE)}</h3>${tone('bT', e, EL_TONE)}</div>` : ''}`;
     $$('[data-arr]', R).forEach(b => b.onclick = () => arrange(b.dataset.arr));
     bindFade('bOp', e, 'opacity');
+    bindTone('bT', e, EL_TONE);
     $('#bRm').onclick = () => removeSel();
     $('#bCx').onclick = () => centre('h');
     $('#bCy').onclick = () => centre('v');

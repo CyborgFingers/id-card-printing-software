@@ -104,7 +104,7 @@ The picture fills the whole card. If it's a different shape from the card, its e
 
 > **Note:** iPhone photos saved as HEIC can't be opened. Save them as JPG first.
 
-To fade the background picture, for example behind text, drag **Image opacity** below it.
+To fade the background picture, for example behind text, drag **Image opacity** below it. To make it darker or richer, drag **Darkness** (which darkens the whole picture, white areas too), **Contrast** and **Colour**. Logos and the ID photo frame have the same three settings when selected; on the photo frame they apply to every person's photo.
 
 ### Put people's details on the card
 
@@ -129,7 +129,7 @@ Click a field on the card to select it. The right panel shows its settings:
 
 - **Text**: font, weight, size, colour, **CAPITALS**, alignment, rotation and letter spacing. Text always stays inside its box: a long name shrinks down to the **Smallest** size, then moves onto two lines if the box has room, then shrinks further.
 - **Dates**: choose the **Date format**, such as 31/03/2027 or 31 Mar 2027.
-- **Photo**: under **Photos**, choose **Fill the frame** (photos of another shape are trimmed at the edges) or **Whole photo** (nothing is cut off; any space shows the frame's colour). Also corner radius, border, the frame's colour, and **Make 3:4 portrait** for the usual photo shape. Each person's photo can still be moved and zoomed when you add or edit them.
+- **Photo**: the frame's photo size shows under **Photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Choose **Fill the frame** (photos of another shape are trimmed at the edges) or **Whole photo** (nothing is cut off; any space shows the frame's colour). Also corner radius, border, the frame's colour, and **Make 3:4 portrait** for the usual photo shape. Each person's photo can still be moved and zoomed when you add or edit them.
 - **Position and size**: exact X, Y, width and height in pixels, plus **Centre horizontally**, **Centre vertically**, **Centre on card** and **Full width**.
 
 Use the bin button to remove the selected field from the card.
@@ -217,7 +217,7 @@ People are the card holders in a client. Open a client to see their **People** t
 
 1. Open the client and choose **Add person**.
 2. Type their first and last name, and any other details the card shows.
-3. Drop their ID photo onto the photo box, or click it to choose a photo.
+3. Drop their ID photo onto the photo box, or click it to choose a photo. The box shows the photo size the template needs.
 4. Choose **Save**, or **Save and print** to print their card straight away.
 
 The card preview on the right shows the card as it will print.
@@ -227,7 +227,7 @@ The card preview on the right shows the card as it will print.
 The photo is fitted to the card's photo frame automatically, as the template says: filling the frame, or showing the whole photo. To adjust one person's photo:
 
 - Drag the photo on the card preview to move it.
-- Use **Zoom**, or scroll on the photo, to zoom in or out. Zoomed right out, the whole photo shows and nothing is cut off.
+- Use **Zoom**, or scroll on the photo, to zoom in or out. Zoom snaps to filling the frame exactly, so no gap is left down a side. Zoomed right out, the whole photo shows and nothing is cut off.
 - Choose **Whole photo** to show all of it in one step, **Reset position** to go back to the template's fit, or **Remove photo** to take it off.
 
 Any space around a photo that doesn't fill the frame shows the frame's colour, set in the template.
@@ -265,20 +265,26 @@ Add many people at once from a CSV file, with their ID photos matched to them au
 1. Open the client and choose **Import from CSV**.
 2. Choose **Download blank CSV**. It has a column for each detail the client's card uses.
 3. Open it in Excel or any spreadsheet program and add one person per row.
-4. Give each person an **ID**, such as 1, 2, 3. The ID only pairs each person with their photo; it isn't saved.
-5. Save it as **CSV**.
+4. Save it as **CSV**.
 
 Dates can be written as 31/03/2027 or 2027-03-31.
 
 ### 2. Name the photos
 
-Name each photo the same as the person's ID: the person with ID 7 gets `7.jpg`.
+Name each photo after the person: their first name, then their last name. Capitals, spaces, dashes and underscores don't matter, so for John Smith any of these match:
 
-- Leading zeros don't matter, so `007.jpg` also matches ID 7.
+| Photo file names that match John Smith |
+|---|
+| `John Smith.jpg`, `JOHN SMITH.jpg`, `john smith.jpg` |
+| `JohnSmith.jpg`, `JOHNSMITH.jpg`, `johnsmith.jpg` |
+| `John_Smith.jpg`, `john-smith.jpg`, `Smith John.jpg` |
+
+- Macrons and accents don't matter either, so `Mere Tuhoe.jpg` matches Mere Tūhoe.
 - Photos can be JPG, PNG, WebP, BMP or GIF, of any size or shape. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), and you can adjust any of them afterwards.
+- The photo size the template needs is shown under **Add the ID photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Photos of that shape fill the frame without being trimmed.
 - Only the file name matters. Nothing needs to be written on the photo.
 
-Instead of an ID, you can also put each photo's file name in the **ID Photo** column, or name the photos after the people, such as `Jane Doe.jpg`.
+The CSV doesn't need a photo column: each person's photo is found by their name. (A CSV that has an **ID Photo** column, such as one exported from the program, still works: the photo named there is used.)
 
 ### 3. Upload and review
 
@@ -291,7 +297,7 @@ Instead of an ID, you can also put each photo's file name in the **ID Photo** co
 | Ready | Will be imported with its photo |
 | No photo | Will be imported without a photo |
 | Photo not found | The CSV names a photo you didn't choose; held back |
-| ID used twice | Two rows share an ID, so both are held back |
+| Same name twice: no photo | Two rows have the same name, so their photo can't tell them apart. Both are imported without a photo; add each one's photo by editing them |
 | Name missing | The row has no name; held back |
 | Already in client | Someone with that name is already in the client; unticked |
 
@@ -441,6 +447,42 @@ In **Settings**, under **Printing**:
 | Flag a card as slow after (minutes) | Warns you when a card takes longer than this |
 
 Under **Supplies**, set when to warn about a low ribbon or HDP film.
+
+### Print adjustments
+
+Card printers often print lighter and duller than the screen shows. **Print adjustments**, in **Settings** under **Printer**, make up for it on every card. They change only what is sent to the printer: templates, previews and proof sheets stay as designed. To make one template's background, logo or photos darker on screen and on the card, use **Darkness**, **Contrast** and **Colour** in the [template builder](#card-templates) instead.
+
+| Setting | Does |
+|---|---|
+| Darkness | Towards **Darker**, the in-between shades print darker, such as a pale background or a light photo. White stays white and black stays black. |
+| Contrast | Towards **More**, dark shades get darker and light shades lighter. |
+| Colour | Towards **Stronger**, colours print richer without getting darker. |
+| Overprint edges | Prints the card this much larger on every side (up to 2 mm), to cover a thin white edge the printer leaves. That much is trimmed off the design's edges, so keep text and logos away from them. |
+
+**Automatic**: for a printer the program knows, Darkness, Contrast and Colour are set for you, and the switch shows the model, such as **Automatic for HID FARGO HDP5000**. The program recognises the HID FARGO HDP5000, HDP5600 and HDPii from the printer's or its driver's name. For any other printer they start at 0.
+
+To set them yourself, turn **Automatic** off (if it shows), then:
+
+1. Move a setting a little, such as Darkness to +15 and Colour to +15.
+2. Choose **Print a test card** and compare it with the screen.
+3. Repeat until the card looks right. **Reset** goes back to the start: everything at 0, and **Automatic** on again for a printer the program knows.
+
+The printer driver has its own colour and image position settings too, under **Printing preferences**. On HID FARGO printers, start there for pale colours: see below.
+
+### Colour and black on HID FARGO printers
+
+The HID FARGO HDP5000 driver's own settings, under **Printing preferences**, work together with the program's. They're worth setting once:
+
+| Driver setting | Use it for |
+|---|---|
+| **Image Color** tab: **Dye-Sub Intensity** | Pale or washed-out cards. It sets the print head's heat, and more heat puts more dye on the card, which the program can't do. Change it a little at a time. |
+| **Toolbox**, **Advanced Settings**: **Image Darkness** | The same, stored in the printer. Change it in steps of 5. |
+| **K Panel Resin** tab: **Print All Black with K Panel** | Crisp black text and barcodes. The program sends each side of a card as one picture, so without this the driver prints black as a mix of colours, which looks softer. It prints pure black only, so use pure black (#000000) for text and barcodes. If a photo's darkest parts look speckled, limit it to the text and barcode areas with a defined area. |
+| **Image Color** tab, **Advanced Settings**: Contrast and Gamma | Leave them at 0 if you use the program's Print adjustments, so the two don't add up. |
+| **Image Position** | Moving the whole picture on the card, up to about 8 mm each way. |
+| **Image Transfer** tab: **Transfer Temperature** | Patchy or incomplete transfer onto the card (not pale colours). |
+
+The program's [Print adjustments](#printer-setup-and-status) are set automatically for these printers. If cards still look pale, raise **Dye-Sub Intensity** first, then fine-tune the program's **Darkness** and **Colour** with **Automatic** off. The program's adjustments keep white unprinted and keep pure black only where the design has it, so the resin black panel prints exactly what you designed.
 
 ### Notifications and sounds
 
@@ -654,13 +696,17 @@ Quick fixes for the most common problems.
 3. In **Settings**, check the right **Card printer** is chosen, then choose **Print a test card**.
 4. Choose **Windows print queue** in Settings to see whether Windows is holding the job.
 
+### Cards print too light, dull or with a thin white edge
+
+Use **Print adjustments** in [Printer setup and status](#printer-setup-and-status): more **Darkness** and **Colour** for pale cards, and **Overprint edges** for a white sliver along an edge.
+
 ### Cards come out the wrong size or cut off
 
 Check the template's card size matches the cards in the printer, and that the printer driver's own settings (**Printing preferences**) use the same card size. See [Card templates](#card-templates).
 
 ### Photos didn't match when importing
 
-Check each photo is named exactly like the person's ID, or like the name in the CSV's **ID Photo** column. See [Importing people from a spreadsheet](#importing-people-from-a-spreadsheet).
+Check each photo is named after the person, first name then last name (such as `John Smith.jpg`), and that the CSV's names are spelt the same. See [Importing people from a spreadsheet](#importing-people-from-a-spreadsheet).
 
 ### The back prints upside down
 

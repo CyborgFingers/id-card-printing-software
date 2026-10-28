@@ -81,8 +81,8 @@ add their people (or import them from a spreadsheet with their photos) and print
   position, title, address and notes.
 - **Your own fields**, added in Settings: text, dates (one can be the card expiry) and numbers that count up by
   themselves, such as a card number.
-- **Import from CSV** with a folder of photos: give each row an ID and name its photo the same (ID 7 → `7.jpg`),
-  or name the photo file in the CSV. Photos are matched automatically and fitted to the card's photo frame, with a
+- **Import from CSV** with a folder of photos: name each photo after the person (`John Smith.jpg`, `johnsmith.jpg`
+  or `JOHN SMITH.jpg` all match John Smith), or name the photo file in the CSV. Photos are matched automatically and fitted to the card's photo frame, with a
   review step before anything is saved.
   Export people and print history to CSV.
 - **Card status**: mark cards lost or returned, see cards that are expired or expiring soon, and filter people who have

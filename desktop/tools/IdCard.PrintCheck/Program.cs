@@ -6,6 +6,7 @@
 //   PrintCheck list
 //   PrintCheck print <printer> [--size CR80|CR79|CR100|<w>x<h>] [--size-name NAME] [--landscape] [--back] [--rotate-back]
 //                              [--rotate-front] [--no-duplex] [--scale 1|2] [--doc NAME] [--bad-image]
+//                              [--tune DARKNESS,CONTRAST,COLOUR,OVERPRINT_MM]   (Settings > Print adjustments)
 //   PrintCheck monitor <printer> <seconds> [pollMs]
 //   PrintCheck restart-test <printer>    switches printers, then checks Stop ends the loop
 //   PrintCheck cancel-test <printer>     pauses the printer, prints, cancels by document name, resumes
@@ -20,7 +21,8 @@ using IdCard.Printing;
 
 var command = args.ElementAtOrDefault(0) ?? "";
 var printerName = args.ElementAtOrDefault(1) ?? "";
-var settings = new PrinterSettingsSnapshot(printerName, 0, 0);
+var tune = Array.IndexOf(args, "--tune") is var ti and >= 0 ? args[ti + 1].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray() : [0, 0, 0, 0];
+var settings = new PrinterSettingsSnapshot(printerName, 0, 0, PrintTuning.From(tune[0], tune[1], tune[2], tune[3]));
 using var printer = new WindowsPrinter(() => settings);
 
 switch (command)
@@ -144,7 +146,7 @@ static PrintJob MakeJob(string[] args)
 }
 
 // A test card: a black border on the edge, one colour block top-left and another bottom-right,
-// so page fill and rotation can be checked in the PDF.
+// so page fill and rotation can be checked in the PDF, and a grey and an orange block in the middle for --tune.
 static byte[] Card(int w, int h, string label, Color topLeft, Color bottomRight)
 {
     using var bmp = new Bitmap(w, h);
@@ -155,6 +157,10 @@ static byte[] Card(int w, int h, string label, Color topLeft, Color bottomRight)
         using var br = new SolidBrush(bottomRight);
         g.FillRectangle(tl, 0, 0, w / 4, h / 8);
         g.FillRectangle(br, w - w / 4, h - h / 8, w / 4, h / 8);
+        using var grey = new SolidBrush(Color.FromArgb(128, 128, 128));
+        using var orange = new SolidBrush(Color.FromArgb(200, 120, 60));
+        g.FillRectangle(grey, w / 8, h * 5 / 8, w / 4, h / 8);
+        g.FillRectangle(orange, w * 5 / 8, h * 5 / 8, w / 4, h / 8);
         using var pen = new Pen(Color.Black, 4);
         g.DrawRectangle(pen, 2, 2, w - 4, h - 4);
         using var font = new Font("Arial", Math.Min(w, h) / 6f, GraphicsUnit.Pixel);

@@ -1,9 +1,9 @@
 import { makeProofSheet } from './proof.js';
 import { createAdmin } from './admin.js';
-import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel } from './render.js';
+import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, photoSpec, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel } from './render.js';
 import { createBuilder } from './builder.js';
 import { LICENSE_TEXT, LICENSE_VERSION, SUPPORTED_PRINTERS_TEXT } from './legal.js';
-import { readPeople, buildPhotoIndex, matchPhoto, idKey } from './csv.js';
+import { readPeople, buildPhotoIndex, matchPhoto } from './csv.js';
 import { createHelp } from './helpview.js';
 // (people import uses these)
 
@@ -410,6 +410,8 @@ const clampN = (v, m) => Math.max(-m, Math.min(m, v));
 const clientById = (id) => S.clients.find(c => c.id === id);
 const clientDesigns = (cid) => { const ids = clientById(cid)?.templateIds || []; return S.designs.filter(d => ids.includes(d.id)); };
 const clientDefaultDesign = (c) => (c && (clientDesigns(c.id).find(d => d.id === c.defaultDesignId) || clientDesigns(c.id)[0])) || null;
+// The ID photo size a template's photo frame expects: "360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait", or '' without a frame.
+const photoSpecLine = (d) => { const s = d && photoSpec(d); return s ? `${s.w} × ${s.h} px · ${s.mmW} × ${s.mmH} mm · ${s.shape ? `${s.shape} ` : ''}${s.orientation}` : ''; };   // breaks only before a "· " part
 // The person details a client needs: every field used by any of its templates.
 const clientFields = (c) => { const ds = clientDesigns(c.id); if (!ds.length) return [...PERSON_FIELDS, ...customFields()];   // no template yet: every detail
   const f = new Set(['firstName', 'lastName']); for (const d of ds) designFields(d).forEach(x => f.add(x)); return [...PERSON_FIELDS, ...customFields()].filter(x => f.has(x)); };
@@ -634,7 +636,7 @@ function personModal(c, p) {
     body: `<div class="pm"><div class="stack" style="gap:14px">
       <div class="grid2"><label class="f">First name<input class="input" id="eFirst" value="${esc(st.firstName)}" autocomplete="off"></label><label class="f">Last name<input class="input" id="eLast" value="${esc(st.lastName)}" autocomplete="off"></label></div>
       ${fields.length ? `<div class="grid2">${fields.map(f => f === 'address' ? `<label class="f" style="grid-column:1 / -1">Address<textarea class="input" data-pf="address" rows="2">${esc(st.address)}</textarea></label>` : !PERSON_FIELDS.includes(f) ? customInput(f, st.extra[f]) : `<label class="f">${fieldLabel(f)}<input class="input" data-pf="${f}" value="${esc(st[f])}" autocomplete="off"></label>`).join('')}</div>` : ''}
-      <div class="drop" id="eDrop" tabindex="0" role="button" aria-label="Choose ID photo"><div class="ph" id="ePh">${p?.hasPhoto ? `<img src="${photoUrl(p)}" alt="">` : ICON.image}</div><div><b id="eName">${st.hasPhoto ? esc(st.photoName || 'Photo saved') : 'Drop a photo here or click to choose'}</b></div></div>
+      <div class="drop" id="eDrop" tabindex="0" role="button" aria-label="Choose ID photo" ${photoSpecLine(d) ? 'aria-describedby="eSpec"' : ''}><div class="ph" id="ePh">${p?.hasPhoto ? `<img src="${photoUrl(p)}" alt="">` : ICON.image}</div><div><b id="eName">${st.hasPhoto ? esc(st.photoName || 'Photo saved') : 'Drop a photo here or click to choose'}</b>${photoSpecLine(d) ? `<span class="num" id="eSpec">At least ${photoSpecLine(d)}</span>` : ''}</div></div>
       <input type="file" id="eFile" accept="image/*" hidden>
       <label class="f">Zoom<input type="range" id="eZoom" min="1" max="4" step="0.01" value="${st.adj.zoom}"></label>
       <div class="row"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm" id="eWhole" ${st.hasPhoto ? '' : 'hidden'}>${ICON.image}Whole photo</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
@@ -745,12 +747,13 @@ const importer = {
     const matched = im.people.filter(p => p.file).length;
     root.innerHTML = `<div class="stack" style="gap:20px"><div class="steps">
       <div class="card step"><span class="n">1</span><h3>Fill in the template</h3>
-        <div class="code">${['ID', 'First Name', 'Last Name', ...clientFields(c).filter(f => !['firstName', 'lastName'].includes(f)).map(f => ({ staffId: 'Staff ID Number', position: 'Position', title: 'Title', address: 'Address' })[f] || esc(fieldLabel(f))), 'ID Photo'].join(',')}</div>
+        <div class="code">${['First Name', 'Last Name', ...clientFields(c).filter(f => !['firstName', 'lastName'].includes(f)).map(f => ({ staffId: 'Staff ID Number', position: 'Position', title: 'Title', address: 'Address' })[f] || esc(fieldLabel(f)))].join(',')}</div>
         <a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download style="align-self:flex-start">${ICON.download}Download blank CSV</a></div>
       <div class="card step ${im.people.length ? 'done' : ''}"><span class="n">${im.people.length ? '✓' : '2'}</span><h3>Upload the completed CSV</h3>
         <div class="row"><button class="btn ${im.people.length ? '' : 'primary'}" id="iCsvBtn">${ICON.upload}${im.people.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="iCsv" accept=".csv,text/csv" hidden></div>
         ${im.people.length ? `<span class="st">${esc(im.csvName)}: ${plural(im.people.length, 'person')}</span>` : ''}${im.warning ? `<span class="st warn">${esc(im.warning)}</span>` : ''}</div>
       <div class="card step ${im.files.length ? 'done' : ''}"><span class="n">${im.files.length ? '✓' : '3'}</span><h3>Add the ID photos</h3>
+        ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c)) ? `<span class="hint num">At least ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c))}</span>` : ''}
         <div class="row"><button class="btn ${im.people.length && !im.files.length ? 'primary' : ''}" id="iFolderBtn">${ICON.folder}Choose folder</button><button class="btn" id="iFilesBtn">${ICON.image}Choose files</button>
         <input type="file" id="iFolder" webkitdirectory multiple hidden><input type="file" id="iFiles" accept="image/*" multiple hidden></div>
         ${im.files.length ? `<span class="st ${matched < im.people.length ? 'warn' : ''}">${plural(im.files.length, 'photo')} chosen · ${matched} of ${im.people.length} matched</span>` : ''}</div></div>
@@ -764,8 +767,7 @@ const importer = {
       if (!people.length) { toast('No people found in that CSV', 'err'); return; }
       this.release();
       const existing = new Set(peopleTab.st.rows.map(p => `${p.firstName} ${p.lastName}`.toLowerCase().trim()));
-      const ids = new Map(); for (const p of people) { const k = idKey(p.importId); if (k) ids.set(k, (ids.get(k) || 0) + 1); }
-      im.people = people.map(p => { const dup = existing.has(`${p.firstName} ${p.lastName}`.toLowerCase().trim()); return { ...p, id: uid(), include: !dup, dup, idTwice: ids.get(idKey(p.importId)) > 1 }; });
+      im.people = people.map(p => { const dup = existing.has(`${p.firstName} ${p.lastName}`.toLowerCase().trim()); return { ...p, id: uid(), include: !dup, dup }; });
       im.csvName = f.name; im.warning = warning; this.match(); this.mount(root, top, c);
     };
     const addFiles = e => {
@@ -780,13 +782,20 @@ const importer = {
   },
   match() {
     const im = peopleTab.st.importing; const idx = buildPhotoIndex(im.files);
-    for (const p of im.people) { const f = matchPhoto(idx, p); if (f !== p.file) { if (p.url) URL.revokeObjectURL(p.url); p.file = f; p.url = f ? URL.createObjectURL(f) : null; } }
+    const found = im.people.map(p => matchPhoto(idx, p));
+    // Two people with the same name would both get that name's photo: they're imported without one, to add by hand.
+    const uses = new Map(); found.forEach((f, i) => { if (f && !im.people[i].photoFile) uses.set(f, (uses.get(f) || 0) + 1); });
+    im.people.forEach((p, i) => {
+      p.nameTwice = !p.photoFile && uses.get(found[i]) > 1;
+      const f = p.nameTwice ? null : found[i];
+      if (f !== p.file) { if (p.url) URL.revokeObjectURL(p.url); p.file = f; p.url = f ? URL.createObjectURL(f) : null; }
+    });
   },
   release() { const im = peopleTab.st.importing; if (im) for (const p of im.people) if (p.url) URL.revokeObjectURL(p.url); },
   status(p) {
     if (!p.firstName && !p.lastName) return ['err', 'Name missing'];
-    if (p.idTwice) return ['err', 'ID used twice'];   // both rows would get the same photo
     if (p.dup) return ['info', 'Already in client'];
+    if (p.nameTwice) return ['warn', 'Same name twice: no photo'];
     if (!p.file) return p.photoFile ? ['err', 'Photo not found'] : ['warn', 'No photo'];
     return ['ok', 'Ready'];
   },
@@ -794,12 +803,12 @@ const importer = {
     const im = peopleTab.st.importing, box = $('#iTable'); if (!box) return;
     if (!im.people.length) { box.innerHTML = `<div class="empty">${ICON.stack}<b>No list loaded yet</b></div>`; return; }
     const ok = im.people.filter(p => p.include && this.status(p)[0] !== 'err');
-    const cols = clientFields(this.client).filter(f => !['firstName', 'lastName'].includes(f)), hasId = im.people.some(p => p.importId);
+    const cols = clientFields(this.client).filter(f => !['firstName', 'lastName'].includes(f));
     const y = $('.tbl-wrap', box)?.scrollTop;
     box.innerHTML = `<div class="toolbar"><b>Review before importing</b><span class="sp"></span>
         <button class="btn primary lg" id="iGo" ${ok.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(ok.length, 'person')}</button></div>
-      <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th>${hasId ? '<th>ID</th>' : ''}<th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
-      <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>${hasId ? `<td class="num">${esc(p.importId) || '<span class="muted">—</span>'}</td>` : ''}
+      <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th><th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
+      <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>
         <td>${p.url ? `<img class="thumb" src="${p.url}" alt="" loading="lazy">` : '<div class="thumb"></div>'}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
         ${cols.map(f => `<td class="muted" style="max-width:200px;white-space:pre-line">${esc(fieldInfo(f).type === 'date' ? formatDate(p[f], 'DD/MM/YYYY') : p[f]) || '—'}</td>`).join('')}
         <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.file ? p.file.name : p.photoFile) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;
@@ -1136,6 +1145,20 @@ VIEWS.settings = {
     const c = S.config;
     if (!isAdmin()) { el.innerHTML = `<div class="settings"><div class="stack">${accountCard(c, false)}</div><div class="stack">${aboutCard()}</div></div>`; this.bindAccount(el); return; }
     const sw = (k, title) => `<label class="check"><label class="switch"><input type="checkbox" data-c="${k}" ${c[k] ? 'checked' : ''}><i></i></label><div><b>${title}</b></div></label>`;
+    // Print adjustments (PrintTuning): key, label, left end, right end, range. Saved as numbers when the slider is released.
+    // With a printer the program knows (S.printer.autoTuning) and printAuto on, Darkness, Contrast and Colour show the printer's own values, disabled.
+    const ADJ = [['printDarkness', 'Darkness', 'Lighter', 'Darker'], ['printContrast', 'Contrast', 'Less', 'More'], ['printColour', 'Colour', 'Weaker', 'Stronger'], ['printOverprint', 'Overprint edges', 'None', '2 mm', 'min="0" max="2" step="0.1"']];
+    const AUTO_KEY = { printDarkness: 'darkness', printContrast: 'contrast', printColour: 'colour' };
+    const autoT = () => S.printer?.autoTuning;
+    const autoOn = () => !!autoT() && S.config.printAuto !== false;
+    const adjVal = (k) => +(S.config[k] ?? 0);
+    const adjShown = (k) => autoOn() && AUTO_KEY[k] ? +(autoT()[AUTO_KEY[k]] ?? 0) : adjVal(k);
+    const adjDefault = () => ADJ.every(([k]) => !adjVal(k)) && (!autoT() || autoOn());
+    const fmtAdj = (k, v) => k === 'printOverprint' ? `${+v.toFixed(1)} mm` : v > 0 ? `+${v}` : `${v}`;
+    const adjHtml = () => `<div class="adj" id="ptAdj"><div class="row"><b>Print adjustments</b><span class="sp"></span><button class="btn sm ghost" id="ptReset" ${adjDefault() ? 'disabled' : ''}>Reset</button></div>
+          ${autoT() ? `<label class="check" style="border:0;padding:0;align-items:center;gap:10px"><label class="switch"><input type="checkbox" id="ptAuto" ${autoOn() ? 'checked' : ''}><i></i></label><div><b>Automatic for ${esc(autoT().model)}</b></div></label>` : ''}
+          <div class="grid2">${ADJ.map(([k, l, lo, hi, range = 'min="-50" max="50" step="1"']) => `<label class="f"><span class="val">${l}<span class="num muted" id="${k}V">${fmtAdj(k, adjShown(k))}</span></span><input type="range" id="${k}" ${range} list="ptZero" value="${adjShown(k)}" aria-label="${l}" aria-valuetext="${fmtAdj(k, adjShown(k))}" ${autoOn() && AUTO_KEY[k] ? 'disabled' : ''}><span class="ends"><span>${lo}</span><span>${hi}</span></span></label>`).join('')}</div>
+          <datalist id="ptZero"><option value="0"></option></datalist></div>`;
     el.innerHTML = `<div class="settings">
       <div class="stack">
         <div class="card"><div class="card-h"><div><h2>Printer</h2></div><button class="btn sm" id="cRefresh">${ICON.retry}Refresh list</button></div><div class="card-b stack">
@@ -1143,6 +1166,7 @@ VIEWS.settings = {
           ${S.simulator ? sw('simulate', 'Simulator mode') : ''}
           ${c.simulate ? `<div class="grid2"><label class="f">Simulated seconds per card<input class="input" type="number" min="2" max="120" data-c="simSeconds" value="${c.simSeconds}"></label></div>` : ''}
           ${!c.simulate && S.printer && S.printer.dpi ? `<span class="hint">Print resolution ${S.printer.dpi} dpi</span>` : ''}
+          ${c.simulate ? '' : adjHtml()}
           <div class="row"><button class="btn" id="cTest">${ICON.print}Print a test card</button>${!c.simulate ? `<button class="btn" id="cPrefs">Printing preferences</button><button class="btn" id="cQueue">Windows print queue</button>` : ''}</div>
         </div></div>
         <div class="card"><div class="card-h"><div><h2>Printing</h2></div></div><div class="card-b" style="padding-top:6px;padding-bottom:6px">
@@ -1197,6 +1221,21 @@ ${accountCard(c, true)}
       } catch (e) { sel.innerHTML = `<option>${esc(e.message)}</option>`; }
     };
     $('#cPrinter').onchange = e => save({ printerName: e.target.value });
+    // Sliders: the readout follows the thumb (input); the value is saved on release (change), then everything is re-read from the saved config.
+    // The section is redrawn (paintAdj) when Automatic is switched, on Reset, and when the printer's autoTuning appears or changes - never mid-drag.
+    let adjDragging = false;
+    const adjShow = (k, v) => { const inp = $(`#${k}`, el); inp.value = v; inp.setAttribute('aria-valuetext', fmtAdj(k, v)); $(`#${k}V`, el).textContent = fmtAdj(k, v); };
+    const adjSync = () => { for (const [k] of ADJ) adjShow(k, adjShown(k)); $('#ptReset', el).disabled = adjDefault(); };
+    const bindAdj = () => {
+      if (!$('#ptAdj', el)) return;
+      for (const [k] of ADJ) { const inp = $(`#${k}`, el); inp.oninput = () => { adjDragging = true; adjShow(k, +inp.value); }; inp.onchange = async () => { await save({ [k]: +inp.value }); adjDragging = false; adjSync(); }; }
+      $('#ptReset', el).onclick = async () => { await save({ ...Object.fromEntries(ADJ.map(([k]) => [k, 0])), ...(autoT() ? { printAuto: true } : {}) }); paintAdj(); };
+      $('#ptAuto', el) && ($('#ptAuto', el).onchange = async e => { await save({ printAuto: e.target.checked }); paintAdj(); });
+    };
+    const paintAdj = () => { const a = $('#ptAdj', el); if (!a) return; a.outerHTML = adjHtml(); bindAdj(); };
+    bindAdj();
+    let adjLast = JSON.stringify(autoT() || null);
+    this.adjPrinter = () => { const now = JSON.stringify(autoT() || null); if (now === adjLast || adjDragging) return; adjLast = now; paintAdj(); };
     bindSeg('cCardSides', async v => { await save({ cardSides: v }); peopleTab.st.sides = null; this.mount(el); });
     if ($('#cBackMethod')) bindSeg('cBackMethod', async v => { await save({ backMethod: v }); peopleTab.st.sides = null; this.mount(el); });
     this.bindAccount(el);
@@ -1240,7 +1279,7 @@ ${accountCard(c, true)}
       catch (err) { toast(err.message, 'err'); }
     };
   },
-  onPrinter() { const el = $('#cSup'); if (el) { const h = suppliesHtml(true); if (h && el.innerHTML !== h) el.innerHTML = h; } },
+  onPrinter() { const el = $('#cSup'); if (el) { const h = suppliesHtml(true); if (h && el.innerHTML !== h) el.innerHTML = h; } this.adjPrinter?.(); },
 };
 
 // ======================================================================

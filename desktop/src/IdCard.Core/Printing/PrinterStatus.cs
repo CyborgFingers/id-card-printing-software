@@ -120,6 +120,8 @@ public static partial class PrinterStatus
         if (raw.MonitorError is not null && !raw.Found) { st["state"] = "warning"; st["label"] = "Status unavailable"; alerts.Add(MakeAlert("monitor", raw.MonitorError)); return st; }
         if (!raw.Found) { st["state"] = "error"; st["label"] = "Printer not found"; alerts.Add(MakeAlert("not-found")); return st; }
         st["found"] = true; st["port"] = raw.PortName; st["driver"] = raw.DriverName;
+        if (PrintTuning.ForPrinter(cfg.PrinterName, raw.DriverName) is { } auto)   // Settings > Print adjustments > Automatic
+            st["autoTuning"] = new JsonObject { ["model"] = auto.Model, ["darkness"] = auto.Tuning.Darkness, ["contrast"] = auto.Tuning.Contrast, ["colour"] = auto.Tuning.Colour };
         st["dpi"] = raw.Dpi > 0 ? raw.Dpi : null;   // cards are rendered at 600 dpi for printers that print at 600
         var sup = ParseFargo(raw.Fargo);
         st["supplies"] = sup;

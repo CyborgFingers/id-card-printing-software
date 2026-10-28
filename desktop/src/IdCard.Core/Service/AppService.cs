@@ -172,6 +172,11 @@ public sealed partial class AppService : IDisposable
         ["backMethod"] = "auto",       // dual-sided: 'auto' = printer flips the card, 'manual' = fronts first, flip, then backs
         ["backMethodChosen"] = false,
         ["rotateBack"] = false,
+        ["printAuto"] = true,          // Settings > Print adjustments: Darkness, Contrast and Colour set for the printer model (PrintTuning.ForPrinter)
+        ["printDarkness"] = 0,         // otherwise these (PrintTuning): -50..50, 0 = as designed
+        ["printContrast"] = 0,
+        ["printColour"] = 0,
+        ["printOverprint"] = 0,        // millimetres, 0..2
         ["pauseOnError"] = true,
         ["autoStart"] = true,
         ["delayBetweenCards"] = 0,
@@ -192,7 +197,7 @@ public sealed partial class AppService : IDisposable
         ["customFields"] = new JsonArray(),     // changed only through /api/fields
         ["autoBackup"] = new JsonObject { ["enabled"] = false, ["folder"] = "", ["every"] = "daily", ["keep"] = 14 },   // changed only through /api/autobackup
     };
-    internal static readonly string[] ConfigKeys = ["printerName", "simulate", "simSeconds", "defaultSides", "cardSides", "backMethod", "backMethodChosen", "rotateBack", "pauseOnError", "autoStart",
+    internal static readonly string[] ConfigKeys = ["printerName", "simulate", "simSeconds", "defaultSides", "cardSides", "backMethod", "backMethodChosen", "rotateBack", "printAuto", "printDarkness", "printContrast", "printColour", "printOverprint", "pauseOnError", "autoStart",
         "delayBetweenCards", "jobTimeoutMin", "pollMs", "ribbonLowPercent", "filmLowPercent", "operatorName", "notifications", "sound", "sessionIdleMin", "theme", "companyName", "logoAsset",
         "licenseAccepted", "port", "openBrowser", "customFields", "autoBackup"];
 
@@ -297,7 +302,10 @@ public sealed partial class AppService : IDisposable
     {
         // Called from printer threads, so it reads a copy of the values it needs.
         var c = Config;
-        return new PrinterSettingsSnapshot(Js.ToStr(c["printerName"]), (int)Js.NumOr(c["pollMs"], 1500), (int)Js.NumOr(c["simSeconds"], 6));
+        var tuning = PrintTuning.From(Js.NumOr(c["printDarkness"], 0), Js.NumOr(c["printContrast"], 0), Js.NumOr(c["printColour"], 0), Js.NumOr(c["printOverprint"], 0));
+        if (Js.Truthy(c["printAuto"]) && PrintTuning.ForPrinter(Js.ToStr(c["printerName"]), Js.ToStr(_printerStatus["driver"])) is { } auto)
+            tuning = auto.Tuning with { OverprintMm = tuning.OverprintMm };
+        return new PrinterSettingsSnapshot(Js.ToStr(c["printerName"]), (int)Js.NumOr(c["pollMs"], 1500), (int)Js.NumOr(c["simSeconds"], 6), tuning);
     }
 
     Action<PrinterRaw?>? _statusHandler;

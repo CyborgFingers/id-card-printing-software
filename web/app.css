@@ -336,6 +336,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ---------- settings ---------- */
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+/* Adjustment sliders (Settings > Print adjustments, builder picture tone): live value beside the name, the two ends named underneath */
+.adj { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line-2); }
+.adj label.f:has(input:disabled) { opacity: .55; }   /* set automatically for the printer */
+.tone { display: flex; flex-direction: column; gap: 10px; }
+.adj .val, .tone .val { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.adj .ends, .tone .ends { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: -2px; }
 
 /* ---------- drawer & modal ---------- */
 .scrim { position: fixed; inset: 0; background: rgba(15, 29, 44, .35); z-index: 40; animation: fade .15s; }

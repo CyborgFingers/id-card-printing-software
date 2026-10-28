@@ -112,11 +112,14 @@ function roundRect(ctx, x, y, w, h, r) {
 // Geometry used both for drawing and for drag-to-pan limits. The template's photo box either fills its frame
 // (fit 'cover', trimming the edges) or shows the whole photo ('contain'); a person's zoom goes from the whole
 // photo (minZoom) up to 4 times that starting size. A photo bigger than the frame moves until an edge meets the
-// frame; a smaller one moves anywhere inside it.
+// frame; a smaller one moves anywhere inside it. A zoom within 3% of filling the frame or of the whole photo snaps to
+// it, so a photo that almost fills the frame never leaves a thin gap down one side.
 export function photoGeometry(img, box, adj = {}) {
   const fill = Math.max(box.w / img.naturalWidth, box.h / img.naturalHeight), whole = Math.min(box.w / img.naturalWidth, box.h / img.naturalHeight);
-  const base = box.fit === 'contain' ? whole : fill, minZoom = whole / base;
-  const zoom = Math.max(minZoom, Math.min(4, adj.zoom || 1));
+  const base = box.fit === 'contain' ? whole : fill, minZoom = whole / base, fillZoom = fill / base;
+  const asked = Math.max(minZoom, Math.min(4, adj.zoom || 1));
+  const near = [fillZoom, minZoom].sort((a, b) => Math.abs(asked - a) - Math.abs(asked - b))[0];
+  const zoom = Math.abs(asked / near - 1) < 0.03 ? near : asked;
   const scale = base * zoom;
   const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
   const maxX = Math.abs(dw - box.w) / 2, maxY = Math.abs(dh - box.h) / 2;
@@ -124,8 +127,55 @@ export function photoGeometry(img, box, adj = {}) {
   const oy = Math.max(-maxY, Math.min(maxY, (adj.oy || 0) * box.h));
   return { dx: box.x + (box.w - dw) / 2 + ox, dy: box.y + (box.h - dh) / 2 + oy, dw, dh, maxX, maxY, minZoom };
 }
+// A picture's Darkness, Contrast and Colour (-50 to 50, 0 = as it is): the template's background, logos and ID photos.
+// Shown on screen and printed, unlike Settings > Print adjustments, which only change printing. Darkness scales the
+// picture towards black (or white), Contrast is an S curve that never clips, Colour changes saturation. Only pixels
+// that were pure black end up pure black: HID FARGO printers can print pure black with the resin K panel, which
+// would look blotchy in a photo's shadows.
+export function toneLut(darkness = 0, contrast = 0) {
+  const k = darkness / 100, spread = 1 + contrast / 100, lut = new Uint8ClampedArray(256);
+  for (let i = 0; i < 256; i++) {
+    let v = i / 255;
+    v = k >= 0 ? v * (1 - k) : v + (1 - v) * -k;
+    v = v < 0.5 ? 0.5 * (2 * v) ** spread : 1 - 0.5 * (2 * (1 - v)) ** spread;
+    lut[i] = i ? Math.max(1, Math.round(v * 255)) : 0;
+  }
+  return lut;
+}
+export function tonePixels(px, darkness = 0, contrast = 0, colour = 0) {
+  const lut = toneLut(darkness, contrast), strength = 1 + colour / 100;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = lut[px[i]], g = lut[px[i + 1]], b = lut[px[i + 2]], grey = 0.299 * r + 0.587 * g + 0.114 * b;
+    px[i] = grey + (r - grey) * strength; px[i + 1] = grey + (g - grey) * strength; px[i + 2] = grey + (b - grey) * strength;
+  }
+  return px;
+}
+// The picture with its tone applied (a canvas the same size), or the picture itself. The last few are kept, so a
+// background or logo is toned once for a whole batch; each person's photo is toned as their card is drawn.
+const tonedCache = [];   // ponytail: 8 most recent, as a full-size canvas each; a batch never holds every photo
+function toned(img, darkness = 0, contrast = 0, colour = 0) {
+  if (!(darkness || contrast || colour)) return img;
+  const key = `${darkness},${contrast},${colour}`, at = tonedCache.findIndex(t => t.img === img && t.key === key);
+  if (at >= 0) { const [hit] = tonedCache.splice(at, 1); tonedCache.unshift(hit); return hit.canvas; }   // most recently used first
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height); tonePixels(data.data, darkness, contrast, colour); g.putImageData(data, 0, 0);
+  tonedCache.unshift({ img, key, canvas: c }); tonedCache.length = Math.min(tonedCache.length, 8);
+  return c;
+}
 // The first photo box on the front (used for drag-to-position in the person editor).
 export const photoBox = (design) => (design?.elements || []).find(e => e.field === 'photo' && e.side === 'front') || null;
+
+// The photo a template expects: its photo frame in pixels (template pixels are the printed pixels, 300 dpi), in mm,
+// and its shape when it's a usual one (3:4...), so people can take or crop photos to fit. Null when it has no photo.
+const SHAPES = [[1, 1], [3, 4], [4, 5], [2, 3], [5, 7], [7, 9]];
+export function photoSpec(design) {
+  const b = photoBox(design); if (!b) return null;
+  const card = cardInfo(design.card), w = Math.round(b.w), h = Math.round(b.h), perPx = card.mmW / card.w;   // older templates have no mm sizes
+  const r = w / h, s = SHAPES.find(([a, c]) => Math.abs(r / (a / c) - 1) < 0.02 || Math.abs(r / (c / a) - 1) < 0.02);
+  const shape = s ? (s[0] === s[1] ? '1:1' : w < h ? `${s[0]}:${s[1]}` : `${s[1]}:${s[0]}`) : null;
+  return { w, h, mmW: Math.round(w * perPx * 10) / 10, mmH: Math.round(h * perPx * 10) / 10, shape, orientation: w === h ? 'square' : w < h ? 'portrait' : 'landscape' };
+}
 
 function drawPlaceholder(ctx, b) {
   ctx.save();
@@ -200,7 +250,7 @@ async function drawImageEl(ctx, e, opts) {
   if (im) {
     const k = (e.fit === 'cover' ? Math.max : Math.min)(e.w / im.naturalWidth, e.h / im.naturalHeight);
     const w = im.naturalWidth * k, h = im.naturalHeight * k;
-    ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, e.x + (e.w - w) / 2, e.y + (e.h - h) / 2, w, h);
+    ctx.imageSmoothingQuality = 'high'; ctx.drawImage(toned(im, e.darkness, e.contrast, e.colour), e.x + (e.w - w) / 2, e.y + (e.h - h) / 2, w, h);
   } else if (opts.placeholder !== false) { ctx.fillStyle = '#e9eef4'; ctx.fillRect(e.x, e.y, e.w, e.h); }
   ctx.restore();
 }
@@ -244,7 +294,7 @@ function drawPhoto(ctx, e, data, opts) {
   if (data.photo) {
     const g = photoGeometry(data.photo, e, data.adj);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(data.photo, g.dx, g.dy, g.dw, g.dh);
+    ctx.drawImage(toned(data.photo, e.darkness, e.contrast, e.colour), g.dx, g.dy, g.dw, g.dh);
   } else if (opts.placeholder !== false) drawPlaceholder(ctx, e);
   ctx.restore();
   if (e.borderWidth > 0) { ctx.lineWidth = e.borderWidth; ctx.strokeStyle = e.borderColor || '#00529F'; roundRect(ctx, e.x + e.borderWidth / 2, e.y + e.borderWidth / 2, e.w - e.borderWidth, e.h - e.borderWidth, e.radius); ctx.stroke(); }
@@ -290,7 +340,8 @@ export async function drawCard(canvas, design, side, data = {}, opts = {}) {
   ctx.fillStyle = (s && s.bgColor) || '#ffffff'; ctx.fillRect(0, 0, w, h);
   if (bg) {   // fills the card; a picture of another shape is trimmed at the edges, never squashed
     const f = Math.max(w / bg.naturalWidth, h / bg.naturalHeight), bw = bg.naturalWidth * f, bh = bg.naturalHeight * f;
-    ctx.save(); ctx.globalAlpha = s.bgOpacity ?? 1; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(bg, (w - bw) / 2, (h - bh) / 2, bw, bh); ctx.restore();
+    ctx.save(); ctx.globalAlpha = s.bgOpacity ?? 1; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(toned(bg, s.bgDarkness, s.bgContrast, s.bgColour), (w - bw) / 2, (h - bh) / 2, bw, bh); ctx.restore();
   }
   for (const e of design.elements || []) {   // in list order: later elements are drawn on top
     if (e.side !== side) continue;

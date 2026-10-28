@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, idKey } = await import('../../web/js/csv.js');
+const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, nameKey } = await import('../../web/js/csv.js');
 const { formatDate, layoutText, photoGeometry } = await import('../../web/js/render.js');
 
 test('CSV: NZ day-first dates and custom columns', () => {
@@ -42,14 +42,16 @@ test('ID photos match by file name, path, missing extension or the person\'s nam
   assert.equal(m('missing.jpg', 'Mere', 'X'), null);   // a named file that isn't there never falls back to a name match
 });
 
-test('ID photos match the CSV\'s ID column (1 → 1.jpg), leading zeros or not', () => {
-  const { people } = readPeople('ID,First Name,Last Name,ID Photo\n1,Jane,Doe,\n007,John,Doe,\n12,Alex,Sample,\n3,Sam,Lee,sam.jpg\n4,No,Photo,\n');
-  assert.deepEqual(people.map(p => p.importId), ['1', '007', '12', '3', '4']);
-  const idx = buildPhotoIndex(['1.JPG', '7.png', '012.jpg', 'sam.jpg', '3.jpg'].map(name => ({ name })));
-  assert.deepEqual(people.map(p => matchPhoto(idx, p)?.name || null), ['1.JPG', '7.png', '012.jpg', 'sam.jpg', null]);   // a named photo wins over the ID
-  assert.equal(idKey(' 0042 '), '42'); assert.equal(idKey('0'), '0'); assert.equal(idKey('A007'), 'a007');
-  const both = buildPhotoIndex(['007.jpg', '7.jpg'].map(name => ({ name })));
-  assert.equal(matchPhoto(both, { importId: '7', firstName: '', lastName: '' }).name, '7.jpg');   // an exact name beats a padded one
+test('ID photos match the person\'s full name in any case, with or without spaces', () => {
+  const john = { firstName: 'John', lastName: 'Smith', photoFile: '' };
+  for (const name of ['John Smith.jpg', 'JOHN SMITH.JPG', 'john smith.png', 'johnsmith.jpg', 'JOHNSMITH.jpeg', 'JohnSmith.webp', 'john_smith.jpg', 'Smith, John.jpg'])
+    assert.equal(matchPhoto(buildPhotoIndex([{ name }]), john)?.name, name, name);
+  const idx = buildPhotoIndex(['Mere Tuhoe.jpg', '7.jpg', 'Jane Doe.png', 'jo.jpg'].map(name => ({ name })));
+  assert.equal(matchPhoto(idx, { firstName: 'Mere', lastName: 'Tūhoe', photoFile: '' })?.name, 'Mere Tuhoe.jpg');   // macrons don't matter
+  assert.equal(matchPhoto(idx, { firstName: 'Jane', lastName: 'Dow', photoFile: '' }), null);   // a different name never matches
+  assert.equal(matchPhoto(idx, { firstName: '', lastName: '', photoFile: '' }), null);
+  assert.equal(matchPhoto(idx, { firstName: 'Jane', lastName: 'Doe', photoFile: '7.jpg' })?.name, '7.jpg');          // a named ID Photo still wins
+  assert.equal(nameKey('  Ana-María  O\'Neil '), 'anamariaoneil');
 });
 
 test('Help topics are built from the current user guide', async () => {
@@ -88,6 +90,12 @@ test('ID photos fill the frame or show whole, and zoom out to the whole photo', 
   const whole = photoGeometry(img, { ...box, fit: 'contain' }, {});
   assert.deepEqual([whole.dw, whole.dh, whole.minZoom], [360, 270, 1]);   // the template shows whole photos by default
   assert.deepEqual([photoGeometry(img, box, { zoom: 9 }).dw], [2560]);   // at most 4 times
+  // The zoom slider can stop just short of filling the frame (0.992): it snaps to fill, so dragging leaves no gap.
+  const near = photoGeometry(img, box, { zoom: 0.992, oy: -1 });   // dragged up as far as it goes
+  assert.deepEqual([near.dh, near.dy, near.maxY], [480, 0, 0]);    // still covers the frame top to bottom
+  const nearWhole = photoGeometry(img, { ...box, fit: 'contain' }, { zoom: 1.02 });
+  assert.deepEqual([nearWhole.dw, nearWhole.dh], [360, 270]);   // and close to the whole photo, to the whole photo
+  assert.equal(Math.round(photoGeometry(img, box, { zoom: 0.9 }).dw), 576);   // further out stays where it was put
 });
 
 test('card dates in each format', () => {
@@ -111,4 +119,32 @@ test('Help search ignores case and accents, needs every word, ranks title matche
   assert.deepEqual(ids(`${word} zzqxv`), []);                                                                // every word must appear
   const sw = t0.summary.split(' ').find(w => /^[a-z]{5,}$/i.test(w));
   assert.match(snippet(search(sw).find(t => t.id === t0.id), [sw.toLowerCase()]), new RegExp(`<mark>${sw}</mark>`, 'i'));
+});
+
+test('picture tone: darker, no clipping, and only pure black stays pure black (FARGO resin K panel)', async () => {
+  const { toneLut, tonePixels } = await import('../../web/js/render.js');
+  const lut = toneLut(50, 50);
+  assert.equal(lut[0], 0); assert.ok([...lut].slice(1).every(v => v >= 1));                 // dark shadows never turn pure black
+  assert.ok([...lut].every((v, i) => i === 0 || v >= lut[i - 1]));                           // no tones swap places
+  assert.ok(toneLut(30, 0)[200] < 200 && toneLut(-30, 0)[200] > 200);                        // darker and lighter
+  assert.ok(toneLut(0, 50)[255] === 255 && toneLut(0, 50)[40] > 0);                          // contrast doesn't clip
+  const px = tonePixels(new Uint8ClampedArray([200, 120, 60, 255, 0, 0, 0, 255]), 0, 0, 30);
+  assert.ok(px[0] - px[2] > 140 && px[3] === 255 && px[4] + px[5] + px[6] === 0);           // stronger colour, black stays black
+});
+
+test('the photo size a template expects: pixels, mm and a usual shape', async () => {
+  const { photoSpec } = await import('../../web/js/render.js');
+  const card = { w: 638, h: 1013, mmW: 53.98, mmH: 85.6 };
+  const d = (w, h, side = 'front') => ({ card, elements: [{ field: 'firstName', side: 'front', w: 500, h: 80 }, { field: 'photo', side, x: 0, y: 0, w, h }] });
+  assert.deepEqual(photoSpec(d(360, 480)), { w: 360, h: 480, mmW: 30.5, mmH: 40.6, shape: '3:4', orientation: 'portrait' });
+  assert.equal(photoSpec(d(400, 300)).shape, '4:3');
+  assert.equal(photoSpec(d(300, 300)).orientation, 'square');
+  assert.equal(photoSpec(d(357, 431)).shape, null);   // no usual shape: just the size
+  assert.equal(photoSpec(d(360, 480, 'back')), null);   // only the front's photo is a person's ID photo
+});
+
+test('the photo size works for older templates whose card has no mm sizes', async () => {
+  const { photoSpec } = await import('../../web/js/render.js');
+  const s = photoSpec({ card: { w: 638, h: 1013 }, elements: [{ field: 'photo', side: 'front', w: 360, h: 480 }] });
+  assert.deepEqual([s.mmW, s.mmH, s.shape], [30.5, 40.6, '3:4']);
 });

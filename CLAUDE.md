@@ -137,7 +137,16 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, gen-help
   about 4× larger in the database until finished batches are cleared.
 - **Any card printer**: printing goes through the printer's own Windows driver. FARGO extras (ribbon/
   film %, card count, flipper) come from the driver's `PrinterDriverData` and are only shown, warned
-  about or used when reported; wording never names a model except in SUPPORTED-PRINTERS.txt.
+  about or used when reported; wording never names a model except in SUPPORTED-PRINTERS.txt and the
+  Automatic print adjustments switch (which names the model it recognised).
+- **Print adjustments** (Settings > Printer, `PrintTuning`): Darkness (gamma), Contrast (S curve) and
+  Colour (saturation) plus Overprint mm, applied by WindowsPrinter to the card bitmap only when printing.
+  `printAuto` (default on) uses `PrintTuning.ForPrinter` values for HID FARGO HDP5000/5600/HDPii (matched on
+  printer or driver name; shown as `printer.autoTuning`). Only pure black may end up pure black and white
+  stays white: FARGO drivers print pure black with the resin K panel (cards are one bitmap, so that needs the
+  driver's "Print All Black with K Panel"). Template pictures have their own Darkness/Contrast/Colour
+  (`bgDarkness`… on a side, `darkness`… on photo/image elements), drawn by render.js `toned()` with a pixel
+  LUT, never CSS filters (CSS contrast() clips shadows to pure black).
 - **Person fields**: definitions in `config.customFields` (keys `cf_…`), changed only via `/api/fields`
   (so stale clients can't roll back card-number counters). Values in `people.extra`. Dates are stored
   as YYYY-MM-DD. One date field may be the card expiry.
