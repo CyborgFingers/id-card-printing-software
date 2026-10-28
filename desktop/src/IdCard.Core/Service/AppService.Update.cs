@@ -33,7 +33,7 @@ public sealed partial class AppService
     void StartUpdateChecks()
     {
         // Setup programs from earlier updates (one may still have been running when it was last cleaned).
-        foreach (var d in Directory.GetDirectories(_o.DataDir, "update-*")) { try { Directory.Delete(d, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+        foreach (var d in Directory.GetDirectories(OwnDir, "update-*")) { try { Directory.Delete(d, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
         _update = new JsonObject { ["current"] = Version, ["available"] = false, ["latest"] = null, ["installing"] = false };
         if (_o.UpdateFeed is null) return;
         _timers.Add(new Timer(_ => Safe(() => CheckForUpdate(force: false).GetAwaiter().GetResult()), null, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1)));
@@ -106,8 +106,8 @@ public sealed partial class AppService
         });
         if (start.Error is not null) return start.Error;
         var setup = start.Setup!;
-        // A new folder each time, inside this account's own data folder.
-        var dir = Path.Combine(_o.DataDir, "update-" + Js.Uid(12));
+        // A new folder each time, inside this account's own folder.
+        var dir = Path.Combine(OwnDir, "update-" + Js.Uid(12));
         var file = Path.Combine(dir, setup.Name);
         string? error = null;
         try

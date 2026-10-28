@@ -14,7 +14,7 @@ public sealed partial class AppService
     string? _recoveredAt;
     int _recoveredOnStart, _printedRun;   // cards to check after a restart; cards printed since the queue last emptied
     bool _pausedForUpdate;   // paused only so an update could install: carry on once the program is back
-    internal bool QueuePaused { get => _queuePaused; set => _queuePaused = value; }
+    internal bool QueuePaused { get => _queuePaused; set { _queuePaused = value; _pausedForUpdate = false; } }   // a person's choice replaces the update's reason
     internal string? RecoveredAt { get => _recoveredAt; set => _recoveredAt = value; }
 
     static readonly string[] Active = ["sending", "printing", "attention"];
@@ -49,9 +49,12 @@ public sealed partial class AppService
         }
         if (recovered > 0) { _queuePaused = true; _recoveredAt = Js.Now(); _recoveredOnStart = recovered; Log($"Recovered queue after restart: {recovered} card(s) need checking"); }
         // Versions up to 3.0.6 didn't save why the queue was paused: the update's download folder, still here on the first start, says so.
-        if (ResumesAfterUpdate(_queuePaused, state["pausedForUpdate"] is JsonValue p ? Js.Truthy(p) : null, recovered, Directory.GetDirectories(_o.DataDir, "update-*").Length > 0))
+        // The same version starting again means the update hasn't installed yet (another Windows account's copy took over): keep waiting.
+        var forUpdate = state["pausedForUpdate"] is JsonValue p ? Js.Truthy(p) : (bool?)null;
+        var sameVersion = Js.ToStr(state["pausedForUpdateFrom"]) == Version;
+        _pausedForUpdate = _queuePaused && recovered == 0 && forUpdate == true && sameVersion;
+        if (ResumesAfterUpdate(_queuePaused, forUpdate, recovered, Directory.GetDirectories(OwnDir, "update-*").Length > 0, sameVersion))
         { _queuePaused = false; Log("Print queue resumed after the update"); }
-        _pausedForUpdate = false;
         SaveQueue(quiet: true);
     }
 
@@ -70,7 +73,7 @@ public sealed partial class AppService
                 var i = 0;
                 foreach (var it in Items(b).OfType<JsonObject>()) UpsertItem(b, it, i++);
             }
-            Db.Exec("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", "queue", Js.Stringify(new JsonObject { ["paused"] = _queuePaused, ["recoveredAt"] = _recoveredAt, ["pausedForUpdate"] = _pausedForUpdate }));
+            Db.Exec("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", "queue", Js.Stringify(new JsonObject { ["paused"] = _queuePaused, ["recoveredAt"] = _recoveredAt, ["pausedForUpdate"] = _pausedForUpdate, ["pausedForUpdateFrom"] = _pausedForUpdate ? Version : null }));
         });
         if (!quiet) BroadcastQueue();
     }
@@ -80,9 +83,10 @@ public sealed partial class AppService
             S(it, "id"), S(b, "id"), Js.AsString(it["personId"]), seq, S(it, "firstName"), S(it, "lastName"), S(it, "status"), (long)Js.NumOr(it["attempts"], 0), Js.AsString(it["error"]), Js.Stringify(it));
 
     /// <summary>An update pauses the queue while it installs; once the program is back it carries on, unless a card needs checking.
-    /// pausedForUpdate is null when an older version saved the queue, and then a just-installed update counts instead.</summary>
-    internal static bool ResumesAfterUpdate(bool paused, bool? pausedForUpdate, int recovered, bool justUpdated) =>
-        paused && recovered == 0 && (pausedForUpdate ?? justUpdated);
+    /// pausedForUpdate is null when an older version saved the queue, and then a just-installed update counts instead.
+    /// sameVersion: the version that paused it has started again, so the update hasn't installed yet.</summary>
+    internal static bool ResumesAfterUpdate(bool paused, bool? pausedForUpdate, int recovered, bool justUpdated, bool sameVersion = false) =>
+        paused && recovered == 0 && !(pausedForUpdate == true && sameVersion) && (pausedForUpdate ?? justUpdated);
 
     void RecomputeBatches()
     {

@@ -59,7 +59,7 @@ OutputBaseFilename=ID-Card-Printing-Software-Free-Setup-{#AppVersion}
 CloseApplications=force
 ; After an /UPDATE install [Run] starts the app again, so the Restart Manager mustn't as well.
 RestartApplications=no
-; The Startup shortcut is per user, as in the older zip version.
+; The Startup shortcut was per user up to 3.0.11; [InstallDelete] removes the one setup made.
 UsedUserAreasWarning=no
 SetupLogging=yes
 
@@ -70,7 +70,7 @@ UninstalledAll=%1 was removed from your computer.%n%nYour people, templates and 
 
 [Tasks]
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: startup; Description: "Start automatically when I sign in to Windows"; GroupDescription: "Startup:"
+Name: startup; Description: "Start automatically when anyone signs in to Windows"; GroupDescription: "Startup:"
 
 [InstallDelete]
 ; [Icons] makes the ticked shortcuts again. This also replaces the per-user shortcuts the older
@@ -79,9 +79,15 @@ Type: files; Name: "{userdesktop}\{#AppName}.lnk"
 Type: files; Name: "{userprograms}\{#AppName}.lnk"
 Type: files; Name: "{autodesktop}\{#AppName}.lnk"
 Type: files; Name: "{userstartup}\{#AppName}.lnk"
+Type: files; Name: "{commonstartup}\{#AppName}.lnk"
 ; The screens are copied fresh each time, so files a newer version no longer ships don't linger.
-; Nothing is saved here: people, templates and settings are in %LOCALAPPDATA%.
+; Nothing is saved here: people, templates and settings are in [Dirs] below.
 Type: filesandordirs; Name: "{app}\wwwroot"
+
+[Dirs]
+; People, templates and settings, shared by every Windows account on this PC, so every account may change them.
+; Up to 3.0.11 each account kept its own in %LOCALAPPDATA%; the program moves them here.
+Name: "{commonappdata}\ID Card Printing Software"; Permissions: users-modify; Flags: uninsneveruninstall
 
 [Files]
 ; Prerequisites first: with solid compression that keeps extracting them quick.
@@ -96,7 +102,7 @@ Source: "..\legal\SUPPORTED-PRINTERS.txt"; DestDir: "{app}"; Flags: ignoreversio
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--background"; WorkingDir: "{app}"; Tasks: startup
+Name: "{commonstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--background"; WorkingDir: "{app}"; Tasks: startup
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Open {#AppName}"; Flags: postinstall nowait skipifsilent runasoriginaluser
@@ -188,11 +194,46 @@ begin
     'Setup is installing the Microsoft components {#AppName} needs.');
 end;
 
+{ Stops the program if it's running from this install folder. Copies with the same file name in
+  other folders (such as the older zip version) keep running. }
+procedure StopRunningApp;
+var
+  Locator, Service, Processes, Process: Variant;
+  I, Code: Integer;
+  Stopped: Boolean;
+begin
+  { First ask it to save and close by itself (it waits up to 10 seconds), then stop anything left. }
+  if FileExists(ExpandConstant('{app}\{#AppExe}')) then
+    Exec(ExpandConstant('{app}\{#AppExe}'), '--exit', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Stopped := False;
+  try
+    Locator := CreateOleObject('WbemScripting.SWbemLocator');
+    Service := Locator.ConnectServer('.', 'root\CIMV2');
+    Processes := Service.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE Name = ''{#AppExe}''');
+    for I := 0 to Processes.Count - 1 do
+    begin
+      Process := Processes.ItemIndex(I);
+      if not VarIsNull(Process.ExecutablePath) and (CompareText(Process.ExecutablePath, ExpandConstant('{app}\{#AppExe}')) = 0) then
+      begin
+        Log('Stopping the running program, process ' + IntToStr(Process.ProcessId));
+        Process.Terminate();
+        Stopped := True;
+      end;
+    end;
+  except
+    Log('Couldn''t check for a running copy: ' + GetExceptionMessage);
+  end;
+  if Stopped then
+    Sleep(1000); { let Windows release its files }
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   NeedDesktop, NeedAspNet, NeedWebView2: Boolean;
 begin
   Result := '';
+  { Copies in other Windows accounts' sessions hold the program's files and the Restart Manager can't close them. }
+  StopRunningApp;
   NeedDesktop := not HasDotnet10('Microsoft.WindowsDesktop.App');
   NeedAspNet := not HasDotnet10('Microsoft.AspNetCore.App');
   NeedWebView2 := not HasWebView2;
@@ -239,39 +280,6 @@ end;
 function NeedRestart: Boolean;
 begin
   Result := RestartNeeded;
-end;
-
-{ Stops the program if it's running from this install folder. Copies with the same file name in
-  other folders (such as the older zip version) keep running. }
-procedure StopRunningApp;
-var
-  Locator, Service, Processes, Process: Variant;
-  I, Code: Integer;
-  Stopped: Boolean;
-begin
-  { First ask it to save and close by itself (it waits up to 10 seconds), then stop anything left. }
-  if FileExists(ExpandConstant('{app}\{#AppExe}')) then
-    Exec(ExpandConstant('{app}\{#AppExe}'), '--exit', '', SW_HIDE, ewWaitUntilTerminated, Code);
-  Stopped := False;
-  try
-    Locator := CreateOleObject('WbemScripting.SWbemLocator');
-    Service := Locator.ConnectServer('.', 'root\CIMV2');
-    Processes := Service.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE Name = ''{#AppExe}''');
-    for I := 0 to Processes.Count - 1 do
-    begin
-      Process := Processes.ItemIndex(I);
-      if not VarIsNull(Process.ExecutablePath) and (CompareText(Process.ExecutablePath, ExpandConstant('{app}\{#AppExe}')) = 0) then
-      begin
-        Log('Stopping the running program, process ' + IntToStr(Process.ProcessId));
-        Process.Terminate();
-        Stopped := True;
-      end;
-    end;
-  except
-    Log('Couldn''t check for a running copy: ' + GetExceptionMessage);
-  end;
-  if Stopped then
-    Sleep(1000); { let Windows release its files }
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

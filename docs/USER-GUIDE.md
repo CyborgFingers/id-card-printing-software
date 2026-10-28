@@ -33,7 +33,7 @@ Install the program, sign in for the first time, and get ready to print your fir
 1. Download the setup from the program's GitHub releases page and run it.
 2. If Windows shows *Windows protected your PC*, choose **More info**, then **Run anyway**. This only happens the first time, because the setup isn't code-signed.
 3. Follow the setup: read the licence and choose **I accept the agreement**. It installs the Microsoft components the program needs if they're missing.
-4. Tick **Start automatically when I sign in to Windows** if you want printing to be ready as soon as the PC starts.
+4. Tick **Start automatically when anyone signs in to Windows** if you want printing to be ready as soon as the PC starts.
 
 ### Sign in for the first time
 
@@ -598,11 +598,11 @@ Change a user's role with the list beside their name. **Reset password** gives t
 
 Any administrator can choose **Reset password** for another user. If nobody can sign in:
 
-1. Sign in to Windows as the person who uses the program.
-2. Run `"C:\Program Files\ID Card Printing Software Free\ID Card Printing Software.exe" --reset-admin`
+1. Run `"C:\Program Files\ID Card Printing Software Free\ID Card Printing Software.exe" --reset-admin`
+2. Windows asks for an administrator's permission. Choose **Yes**, or enter a Windows administrator's password.
 3. Sign in as `admin` with the password `admin`, and choose a new password.
 
-This only works for the Windows account whose data it is.
+Only a Windows administrator on the PC can do this.
 
 ## Backups and moving to a new PC
 
@@ -639,7 +639,7 @@ Everything on this PC is replaced with the backup, and you sign in with the user
 2. Install the program on the new PC and sign in.
 3. Restore the backup on the new PC.
 
-Copying the database file itself doesn't work: it's locked to the Windows account that made it.
+Copying the database file itself doesn't work: it's locked to the PC that made it.
 
 ## Appearance
 
@@ -679,11 +679,19 @@ Printing stops until the program is opened again from the Start menu. Cards left
 
 ### Starting with Windows
 
-The setup asks whether to start the program when you sign in to Windows. To change your answer, run the setup again and tick or untick **Start automatically when I sign in to Windows**.
+The setup asks whether to start the program when anyone signs in to Windows. To change your answer, run the setup again and tick or untick **Start automatically when anyone signs in to Windows**.
 
 ### Where your data is
 
-Everything is stored in `%LOCALAPPDATA%\ID Card Printing Software`, for the Windows account that uses the program. Updating keeps it, and uninstalling the program leaves it in place.
+Everything is stored in `C:\ProgramData\ID Card Printing Software`, shared by every Windows account on the PC. Whoever signs in to Windows sees the same templates, clients, people and print queue, and still signs in to the program with their own username and password. Updating keeps it, and uninstalling the program leaves it in place.
+
+The database is encrypted so a copy can't be opened on another PC. Anyone who can sign in to Windows on this PC can reach the file, so give Windows accounts on it only to people you trust with the cards' details.
+
+Up to version 3.0.11 each Windows account kept its own data. The first time an account runs a newer version, its data moves into the shared folder. If the shared folder already has data of its own, the program asks once which to keep. The other copy stays on the PC as a file.
+
+### More than one Windows account signed in
+
+When two Windows accounts are signed in at the same time, the program runs in whichever account opened it first, and cards print from there. The other account's window shows the same screens. If the first account signs out, the program carries on printing in the other account. Install the card printer for all users, so it's there whichever account is printing (a USB printer usually is).
 
 ## Troubleshooting
 

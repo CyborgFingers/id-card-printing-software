@@ -1,7 +1,6 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
 // Emergency sign-in reset: puts the "admin" account back to admin / admin as an administrator (a new
-// password must be chosen at the next sign-in). Only works for the Windows account whose key protects
-// the database, like the program itself.
+// password must be chosen at the next sign-in). The Windows program only runs it for a Windows administrator.
 using IdCard.Data;
 using IdCard.Security;
 
@@ -11,8 +10,8 @@ public static class ResetAdmin
 {
     public static void Run(string dataDir, string key)
     {
-        var file = Path.Combine(dataDir, "id-card-printing-software.db");
-        if (!File.Exists(file)) throw new InvalidOperationException("There is no database on this PC for this Windows account yet.");
+        var file = Path.Combine(dataDir, AppService.DbFileName);
+        if (!File.Exists(file)) throw new InvalidOperationException("There is no database on this PC yet.");
         using var db = Db.Open(file, key, AppService.AppId);
         var now = Js.Now();
         db.Tx(() =>

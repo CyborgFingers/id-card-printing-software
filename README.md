@@ -158,8 +158,10 @@ prompt. You will see this once; updates installed through **Update now** do not 
 against the SHA-256 digest shown on its release page.
 
 **Where your data lives.** Everything is in one encrypted database at
-`%LOCALAPPDATA%\ID Card Printing Software`. Installing a new version over an old one keeps it, and uninstalling the
-program leaves it in place; delete that folder yourself if you want it gone.
+`C:\ProgramData\ID Card Printing Software`, shared by every Windows account on the PC (each person still signs in to
+the program). It can't be opened on another PC, but anyone who can sign in to Windows on this one can reach the file.
+Installing a new version over an old one keeps it, and uninstalling the program leaves it in place;
+delete that folder yourself if you want it gone.
 
 ## Privacy
 
@@ -180,15 +182,14 @@ it.
 <details>
 <summary><b>I have forgotten the admin password</b></summary>
 
-Any administrator can reset another user's password from **Settings > Users**. If nobody can sign in, sign in to
-Windows as the person who uses the program, then run
+Any administrator can reset another user's password from **Settings > Users**. If nobody can sign in, run
 
 ```
 "C:\Program Files\ID Card Printing Software Free\ID Card Printing Software.exe" --reset-admin
 ```
 
-It puts the `admin` account back to the password `admin` and asks for a new one at the next sign-in. It only works
-for the Windows account whose database it is, so nobody else can use it to get in.
+It puts the `admin` account back to the password `admin` and asks for a new one at the next sign-in. Windows asks for
+an administrator's permission first, so only a Windows administrator on the PC can do it.
 </details>
 
 <details>
@@ -196,7 +197,7 @@ for the Windows account whose database it is, so nobody else can use it to get i
 
 Make a backup on the old PC (**Settings > Backup > Download backup**, with a backup password), install the program on
 the new PC, then **Restore from backup** in Settings with that file and password. Copying the database file across
-does not work: its key belongs to the Windows account on the old PC.
+does not work: its key belongs to the old PC.
 </details>
 
 <details>

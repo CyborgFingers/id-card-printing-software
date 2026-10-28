@@ -1,6 +1,7 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
 // The notification-area icon. It owns the print service and the app window, and keeps running
-// (and printing) while the window is closed.
+// (and printing) while the window is closed. While another Windows account's copy runs the print service,
+// it owns only the window, opened onto that service, and takes the service over when that copy closes.
 using Microsoft.Win32;
 
 namespace IdCard.Desktop;
@@ -10,13 +11,17 @@ sealed class TrayApp : ApplicationContext
     readonly SynchronizationContext _ui = new WindowsFormsSynchronizationContext();
     readonly NotifyIcon _tray = new();
     readonly RegisteredWaitHandle _showWait, _exitWait;
+    readonly System.Windows.Forms.Timer _takeOver = new() { Interval = 5000 };
+    Mutex? _serviceLock;   // kept here so it's held until the program ends
     ServiceHost? _host;
+    string? _url;   // set once the screens can be opened
     MainWindow? _window;
     bool _openWhenReady, _exiting, _tipOpensQueue;
 
-    public TrayApp(bool openWindow, EventWaitHandle showEvent, EventWaitHandle exitEvent)
+    public TrayApp(bool openWindow, Mutex? serviceLock, EventWaitHandle showEvent, EventWaitHandle exitEvent)
     {
         _openWhenReady = openWindow;
+        _serviceLock = serviceLock;
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open ID Card Printing Software", null, (_, _) => ShowWindow());
         _tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -34,6 +39,26 @@ sealed class TrayApp : ApplicationContext
 
     async Task Start()
     {
+        if (_serviceLock is null)
+        {
+            _url = Program.ServiceUrl;
+            _takeOver.Tick += (_, _) =>
+            {
+                if (_exiting || Program.TakeServiceLock() is not { } taken) return;
+                _takeOver.Stop();
+                _serviceLock = taken;
+                Program.BringOldData();
+                _ = StartService();
+            };
+            _takeOver.Start();
+            if (_openWhenReady) { _openWhenReady = false; ShowWindow(); }   // not again when it takes over
+            return;
+        }
+        await StartService();
+    }
+
+    async Task StartService()
+    {
         try
         {
             _host = await Task.Run(() => ServiceHost.StartAsync(Program.Options(() => _ui.Post(_ => Exit(), null),
@@ -47,14 +72,15 @@ sealed class TrayApp : ApplicationContext
             Exit();
             return;
         }
+        _url = _host.Url;
         if (_openWhenReady) ShowWindow();
     }
 
     void ShowWindow(string? screen = null)
     {
         if (_exiting) return;
-        if (_host is null) { _openWhenReady = true; return; }   // still starting: open once ready
-        if (_window is null || _window.IsDisposed) _window = new MainWindow(_host.Url, Program.DataDir, Exit, m => ShowTip(Program.Title, m, ToolTipIcon.None, false));
+        if (_url is null) { _openWhenReady = true; return; }   // still starting: open once ready
+        if (_window is null || _window.IsDisposed) _window = new MainWindow(_url, Program.UserDir, Exit, m => ShowTip(Program.Title, m, ToolTipIcon.None, false));
         if (screen is not null) _window.Go(screen);
         _window.ShowAndActivate();
     }
@@ -71,6 +97,7 @@ sealed class TrayApp : ApplicationContext
     {
         if (_exiting) return;
         _exiting = true;
+        _takeOver.Stop();
         _tray.Visible = false;
         _window?.CloseForExit();
         StopService();
@@ -87,6 +114,7 @@ sealed class TrayApp : ApplicationContext
     {
         _showWait.Unregister(null);
         _exitWait.Unregister(null);
+        _takeOver.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         base.ExitThreadCore();

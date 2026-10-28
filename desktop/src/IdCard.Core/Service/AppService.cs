@@ -26,6 +26,9 @@ public sealed class StartupException(string title, string details) : Exception(t
 public sealed class ServiceOptions
 {
     public required string DataDir { get; init; }
+    /// <summary>A folder only this Windows account can use, for downloaded updates and backups on their way in or out
+    /// (the shared DataDir can be changed by every account); DataDir when not set.</summary>
+    public string? UserDir { get; init; }
     public required string WebRoot { get; init; }
     /// <summary>Returns the database key; allowCreate is true only when there is no database yet.</summary>
     public required Func<bool, string> GetDbKey { get; init; }
@@ -54,12 +57,14 @@ public sealed partial class AppService : IDisposable
     public const string AppId = "ID Card Printing Software";     // stored inside the database and backups
     public const string Copyright = "Copyright (c) 2026 Josh McNabb. All rights reserved.";
     public const string LicenseVersion = "1.0";                    // raise this whenever the licence terms change
+    public const string DbFileName = "id-card-printing-software.db";
 
     readonly ServiceOptions _o;
     readonly SemaphoreSlim _gate = new(1, 1);
     readonly List<Timer> _timers = [];
     internal Db Db { get; }
     internal string DbFile { get; }
+    string OwnDir => _o.UserDir ?? _o.DataDir;
     internal string DbKey { get; }
     internal string Xfer { get; }
     internal string Version => _o.Version;
@@ -74,8 +79,9 @@ public sealed partial class AppService : IDisposable
         _o = o;
         if (o.RealPrinter is null && o.Simulator is null) throw new ArgumentException("A printer is required.", nameof(o));
         Directory.CreateDirectory(o.DataDir);
-        DbFile = Path.Combine(o.DataDir, "id-card-printing-software.db");
-        Xfer = Path.Combine(o.DataDir, "transfer");   // only ever holds password-encrypted backups, briefly
+        Directory.CreateDirectory(OwnDir);
+        DbFile = Path.Combine(o.DataDir, DbFileName);
+        Xfer = Path.Combine(OwnDir, "transfer");   // only ever holds password-encrypted backups, briefly
         Directory.CreateDirectory(Xfer);
         foreach (var f in Directory.GetFiles(Xfer)) { try { File.Delete(f); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
 
@@ -83,13 +89,13 @@ public sealed partial class AppService : IDisposable
         try { DbKey = o.GetDbKey(!exists); }
         catch (Exception e)
         {
-            throw new StartupException("The database key could not be loaded", $"{e.Message}\n\nThe database is encrypted with a key that belongs to the Windows account that created it. " +
-                $"Sign in to Windows as that user, or move the database file away to start fresh ({DbFile}) and then restore a backup from Settings.");
+            throw new StartupException("The database key could not be loaded", $"{e.Message}\n\nThe database is encrypted with a key that belongs to this PC. " +
+                $"If the database came from another PC, move it away ({DbFile}) to start fresh, then restore a backup from Settings.");
         }
         try { Db = Db.Open(DbFile, DbKey, AppId); }
         catch (BadKeyException)
         {
-            throw new StartupException("The database could not be unlocked", $"This database was encrypted on another PC or Windows account. Move it away ({DbFile}) to start fresh, then restore a backup from Settings.");
+            throw new StartupException("The database could not be unlocked", $"This database was encrypted on another PC. Move it away ({DbFile}) to start fresh, then restore a backup from Settings.");
         }
 
         Locked(() =>

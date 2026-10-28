@@ -72,8 +72,8 @@ desktop/src/IdCard.Core/        The service (net10.0, cross-platform)
   Printing/CardPaper.cs         Which paper a card prints on (driver paper by name, else custom size)
   Http/Router.cs                Localhost/Host/Origin checks, route table + auth gates, static files
   Http/Routes*.cs               The API: auth/users/settings, clients/people/fields, designs/queue, history/backups/updates
-desktop/src/IdCard.Desktop/     The Windows program (WinExe, net10.0-windows, x64): Program (single instance,
-                                --background, --reset-admin, update runner), TrayApp, MainWindow (WebView2),
+desktop/src/IdCard.Desktop/     The Windows program (WinExe, net10.0-windows, x64): Program (one copy per session, one
+                                print service per PC, --background, --reset-admin, update runner), TrayApp, MainWindow (WebView2),
                                 KeyStore (DPAPI), Printing/WindowsPrinter*.cs (driver printing, WMI monitor)
 desktop/src/IdCard.DevHost/     The service with a simulated printer on any OS (SimPrinter.cs; development only)
 desktop/tests/IdCard.Tests/     xUnit tests
@@ -93,12 +93,29 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, gen-help
 ## Key design decisions (keep these)
 
 - **No plain files.** All data and settings live in the one encrypted DB file
-  (`%LOCALAPPDATA%\ID Card Printing Software\id-card-printing-software.db` on Windows). Card images
-  go from the database to the printer driver in memory. Backups are encrypted with a user-chosen
-  backup password (`.idcbak`); the `transfer/` folder only ever holds those briefly. 3.x opens 2.x
-  databases and backups unchanged (same DB path, registry key and cipher settings).
-- **DB key** is tied to the Windows user (DPAPI, `HKCU\Software\ID Card Printing Software\DatabaseKey`).
-  A copied DB can't be opened elsewhere; backups are the way to move data.
+  (`C:\ProgramData\ID Card Printing Software\id-card-printing-software.db` on Windows), shared by every
+  Windows account on the PC (setup's [Dirs] grants Users modify). Card images go from the database to the
+  printer driver in memory. Backups are encrypted with a user-chosen backup password (`.idcbak`); the
+  `transfer/` folder only ever holds those briefly. Each account's own `%LOCALAPPDATA%\ID Card Printing
+  Software` keeps only its WebView2 data and update downloads (never the shared folder: the setup runs
+  elevated from there) and `transfer/` (a junction there could aim its clean-up anywhere). Up to 3.0.11
+  (and in 2.x) the DB lived there, one per account; MoveData brings it into the shared folder once
+  (re-encrypted with the shared key via ExportBackup): automatically when there's no shared DB or it's
+  untouched (no templates/clients/people/history/batches, admin still on the default password), else only if
+  the person says Yes to a one-time question. The loser is renamed (`.old-<stamp>` / `.replaced-<stamp>`),
+  never deleted. Same cipher settings as 2.x. Known gap: the 3.x updater starts setup with runas, so the
+  /UPDATE relaunch runs as whoever approved UAC; a standard user who types another admin's password gets
+  the app back as that admin (their own data moves at their next sign-in, via the question).
+- **DB key** is tied to the PC (DPAPI LocalMachine, `C:\ProgramData\ID Card Printing Software\database.key`).
+  A copied DB can't be opened elsewhere; backups are the way to move data. The old per-account key
+  (`HKCU\Software\ID Card Printing Software\DatabaseKey`, CurrentUser DPAPI) is only read to move old data.
+  `--reset-admin` asks for Windows admin rights (any account can open the shared data).
+- **Update pause**: the queue meta saves `pausedForUpdateFrom` (version); the same version starting again
+  (another session's copy taking over mid-update) keeps waiting. Setup's PrepareToInstall kills every copy
+  from {app} in every session (WMI) because Restart Manager can't close other sessions' copies.
+- **One print service per PC.** The copy holding `Global\IDCardPrintingSoftwareFree.Service` runs it; a copy
+  in another Windows session (or account) opens only its window onto `http://localhost:5180` and takes the
+  service over (5 s check) once the holder exits.
 - **One thread at a time**: like the Node service it replaced, all state and the one SqliteConnection
   are used under the service "gate" (`AppService.Locked`/`LockedAsync`). Request bodies are read
   before taking it and replies written after; printing, waits and downloads never hold it. Printer
@@ -205,8 +222,11 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, gen-help
 
 ## Testing on Windows (no card printer needed)
 
-- The service needs a signed-in Windows desktop session: its database key is DPAPI-protected, and DPAPI
-  fails over SSH with key authentication ("Access is denied").
+- The service's key is DPAPI LocalMachine, which works over SSH (`--background` starts it headless). Moving an
+  account's 3.0.11-and-earlier data reads that account's CurrentUser DPAPI key, which fails over SSH with key
+  authentication ("Access is denied"): test it in a signed-in desktop session, or as SYSTEM from a scheduled
+  task (SYSTEM's own DPAPI works headless; its data is in C:\Windows\System32\config\systemprofile). SSH and
+  SYSTEM share session 0, which also tests a second Windows account in the same session.
 - Test printer: `Add-PrinterPort -Name C:\Test\card.pdf` then
   `Add-Printer -Name "Test Card Printer (PDF)" -DriverName "Microsoft Print To PDF" -PortName C:\Test\card.pdf`.
   Every card printed lands in that PDF (overwritten each time) with no Save dialog; render it to check.

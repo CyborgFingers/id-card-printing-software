@@ -119,6 +119,7 @@ public class ServiceLogicTests
         Assert.False(AppService.ResumesAfterUpdate(false, true, 0, true));                // not paused at all
         Assert.True(AppService.ResumesAfterUpdate(true, pausedForUpdate: null, 0, true)); // saved by 3.0.6 or older, just updated
         Assert.False(AppService.ResumesAfterUpdate(true, null, 0, false));                // saved by an older version, no update: a person's pause
+        Assert.False(AppService.ResumesAfterUpdate(true, true, 0, true, sameVersion: true)); // started again before the update installed
     }
 
     static readonly StatusSettings Cfg = new("Card printer", false, 10, 10);
