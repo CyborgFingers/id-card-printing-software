@@ -75,11 +75,13 @@ Name: startup; Description: "Start automatically when anyone signs in to Windows
 [InstallDelete]
 ; [Icons] makes the ticked shortcuts again. This also replaces the per-user shortcuts the older
 ; zip version made (same names), and removes a shortcut whose task was unticked on an upgrade.
-Type: files; Name: "{userdesktop}\{#AppName}.lnk"
-Type: files; Name: "{userprograms}\{#AppName}.lnk"
-Type: files; Name: "{autodesktop}\{#AppName}.lnk"
-Type: files; Name: "{userstartup}\{#AppName}.lnk"
-Type: files; Name: "{commonstartup}\{#AppName}.lnk"
+; An update from the program (/UPDATE) leaves every shortcut as it is: it changes only the program,
+; so a shortcut someone removed doesn't come back. Running setup by hand applies its ticks.
+Type: files; Name: "{userdesktop}\{#AppName}.lnk"; Check: not IsUpdate
+Type: files; Name: "{userprograms}\{#AppName}.lnk"; Check: not IsUpdate
+Type: files; Name: "{autodesktop}\{#AppName}.lnk"; Check: not IsUpdate
+Type: files; Name: "{userstartup}\{#AppName}.lnk"; Check: not IsUpdate
+Type: files; Name: "{commonstartup}\{#AppName}.lnk"; Check: not IsUpdate
 ; The screens are copied fresh each time, so files a newer version no longer ships don't linger.
 ; Nothing is saved here: people, templates and settings are in [Dirs] below.
 Type: filesandordirs; Name: "{app}\wwwroot"
@@ -100,9 +102,9 @@ Source: "..\legal\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversi
 Source: "..\legal\SUPPORTED-PRINTERS.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{commonstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--background"; WorkingDir: "{app}"; Tasks: startup
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Check: not IsUpdate
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon; Check: not IsUpdate
+Name: "{commonstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--background"; WorkingDir: "{app}"; Tasks: startup; Check: not IsUpdate
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Open {#AppName}"; Flags: postinstall nowait skipifsilent runasoriginaluser

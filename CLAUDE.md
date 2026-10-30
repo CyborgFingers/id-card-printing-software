@@ -54,6 +54,21 @@ what installed copies update to (`AppService.UpdateRepo`).
 To release: bump `<Version>`, add `.github/release-notes/vX.Y.Z.md` (shown on the release page and
 behind the app's "What's new" link), commit, push, then push the tag `vX.Y.Z`.
 
+**Updates change only what they're for (the owner's standing rule).** Installing a new version must not
+delete anything, change any setting or do anything except add or change that release's features. Before
+every release, check the diff against this:
+- **Data**: never delete or rewrite people, photos, templates, clients, history or sign-ins. Database
+  changes only add tables or columns (`Db.Migrate`); a template format upgrade must keep its meaning, and
+  start-up never saves over rows it can't read.
+- **Settings**: never change a saved setting. Every setting is written down at start (`LoadConfig`), so a
+  changed default only reaches new installs. A brand-new setting must default to how the program behaved
+  before, unless that behaviour is the release's point and the release notes say so.
+- **Setup**: an in-app update (`/UPDATE`) replaces program files only. It leaves shortcuts and the data
+  folder alone (`Check: not IsUpdate`), and never adds a [Run], registry or delete entry beyond that.
+- **Anything one-off** (moving data, changing where things live, turning something on for existing
+  installs) needs the owner's explicit OK first, keeps the old copy, and is named in the release notes.
+- `UpdateKeepsDataTests` starts the service as one version and again as the next: it must still pass.
+
 ## Layout
 
 ```

@@ -210,15 +210,20 @@ public sealed partial class AppService : IDisposable
     void LoadConfig()
     {
         var c = DefaultConfig();
+        var stored = new HashSet<string>();
         foreach (var r in Db.Rows("SELECT key, value FROM settings"))
         {
             var key = (string)r["key"]!;
-            try { c[key] = JsonNode.Parse((string?)r["value"] ?? "null"); } catch (System.Text.Json.JsonException) { }
+            try { c[key] = JsonNode.Parse((string?)r["value"] ?? "null"); stored.Add(key); } catch (System.Text.Json.JsonException) { }
         }
         if (c["customFields"] is not JsonArray) c["customFields"] = new JsonArray();
         if (c["autoBackup"] is not JsonObject) c["autoBackup"] = DefaultConfig()["autoBackup"]!.DeepClone();
         if (!HasSimulator) c["simulate"] = false;   // simulator mode only exists in the development host
         Config = c;
+        // Settings never changed are written down as they are now, so a later version with a different default
+        // doesn't change them: an update only brings defaults for settings that are new.
+        var missing = c.Where(kv => !stored.Contains(kv.Key)).ToList();
+        if (missing.Count > 0) Db.Tx(() => { foreach (var (k, v) in missing) Db.Exec("INSERT INTO settings(key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING", k, Js.Stringify(v), Js.Now()); });
     }
 
     internal void SaveConfig()

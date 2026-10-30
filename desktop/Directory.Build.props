@@ -4,7 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>3.0.13</Version>
+    <Version>3.0.14</Version>
     <Product>ID Card Printing Software Free</Product>
     <Company>Josh McNabb</Company>
     <Copyright>Copyright (c) 2026 Josh McNabb. All rights reserved.</Copyright>

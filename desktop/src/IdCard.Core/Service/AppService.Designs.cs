@@ -131,17 +131,17 @@ public sealed partial class AppService
 
     void LoadDesigns()
     {
-        var changed = false;
+        bool changed = false, unreadable = false;
         Designs = [];
         foreach (var r in Db.Rows("SELECT data FROM designs ORDER BY position, rowid"))
         {
-            if (Js.Parse((string?)r["data"]) is not JsonObject d) continue;
+            if (Js.Parse((string?)r["data"]) is not JsonObject d) { unreadable = true; continue; }
             var u = UpgradeDesign(d);
             if (u != d) changed = true;
             if (u["card"] is not JsonObject c || Js.ToNumber(c["w"]) is not > 0) { u["card"] = new JsonObject { ["w"] = 638, ["h"] = 1013 }; changed = true; }   // older templates were always portrait
             Designs.Add(u);
         }
-        if (changed) SaveDesigns();
+        if (changed && !unreadable) SaveDesigns();   // saving drops rows it can't read, so starting never does: only a person's own change saves then
     }
 
     internal void SaveDesigns()

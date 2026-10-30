@@ -681,7 +681,7 @@ The program checks for new versions by itself.
 2. Choose **What's new** to read about it, or **Update now** to install it.
 3. Answer **Yes** if Windows asks for permission.
 
-The program closes, updates and opens again by itself. Your people, templates and settings are kept.
+The program closes, updates and opens again by itself. An update only adds or changes what it's for: your people, photos, templates, settings and shortcuts stay exactly as they were.
 
 To check straight away, choose **Check for updates** in **Settings**, under **About**.
 
