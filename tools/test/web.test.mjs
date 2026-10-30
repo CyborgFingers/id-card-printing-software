@@ -4,8 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, nameKey } = await import('../../web/js/csv.js');
-const { formatDate, layoutText, photoGeometry } = await import('../../web/js/render.js');
+const { readPeople, isoDate, parseCSV, buildPhotoIndex, matchPhoto, nameKey, planUpdate } = await import('../../web/js/csv.js');
+const { formatDate, layoutText, photoGeometry, photoFormat, PHOTO_ACCEPT } = await import('../../web/js/render.js');
 
 test('CSV: NZ day-first dates and custom columns', () => {
   assert.equal(isoDate('31/03/2027'), '2027-03-31');
@@ -147,4 +147,61 @@ test('the photo size works for older templates whose card has no mm sizes', asyn
   const { photoSpec } = await import('../../web/js/render.js');
   const s = photoSpec({ card: { w: 638, h: 1013 }, elements: [{ field: 'photo', side: 'front', w: 360, h: 480 }] });
   assert.deepEqual([s.mmW, s.mmH, s.shape], [30.5, 40.6, '3:4']);
+});
+
+test('photo formats: read by file name, and offered to the file picker', () => {
+  const f = (name) => photoFormat({ name });
+  assert.equal(f('John Smith.HEIC'), 'heic'); assert.equal(f('a.heif'), 'heic'); assert.equal(f('scan.TIF'), 'tiff');
+  assert.equal(f('x.jfif'), 'jpg'); assert.equal(f('x.jpeg'), 'jpg'); assert.equal(f('x.avif'), 'avif');
+  assert.equal(f('notes.txt'), null); assert.equal(f('heic'), null); assert.equal(f('Thumbs.db'), null);
+  assert.ok(PHOTO_ACCEPT.startsWith('image/*,') && PHOTO_ACCEPT.includes('.heic') && PHOTO_ACCEPT.includes('.tiff'));
+});
+
+test('bulk update: rows and photos change the people already there, by name, and never add anyone', () => {
+  const people = [
+    { id: 1, firstName: 'Jane', lastName: 'Doe', position: 'Driver', extra: {} },
+    { id: 2, firstName: 'John', lastName: 'Smith', position: '', extra: { cf_dep: 'Ops' } },
+    { id: 3, firstName: 'Sam', lastName: 'Lee', extra: {} }, { id: 4, firstName: 'Sam', lastName: 'Lee', extra: {} },
+    { id: 5, firstName: 'Mere', lastName: 'Tūhoe', extra: {} },
+  ];
+  const value = (p, k) => k.startsWith('cf_') ? p.extra[k] : p[k];
+  const fields = ['staffId', 'position', 'cf_dep'];
+  const files = ['jane doe.heic', 'SAM_LEE.jpg', 'Mere Tuhoe.tif', 'Nobody Here.png'].map(name => ({ name }));
+  const rows = [
+    { firstName: 'JANE', lastName: 'doe', position: 'Supervisor', staffId: '', cf_dep: '' },   // blank cells stay as they are
+    { firstName: 'John', lastName: 'Smith', position: '', staffId: '', cf_dep: 'Ops' },        // nothing different
+    { firstName: 'Ana', lastName: 'Ngata', position: 'Clerk' },                                  // not in this client
+  ];
+  const { entries, unusedFiles } = planUpdate(people, rows, files, fields, value);
+  const by = (id) => entries.filter(e => e.person?.id === id);
+  assert.deepEqual(by(1)[0].changes, { position: 'Supervisor' }); assert.equal(by(1)[0].file.name, 'jane doe.heic'); assert.equal(by(1)[0].problem, null);
+  assert.equal(by(2)[0].problem, 'noChange');
+  assert.deepEqual(by(3).concat(by(4)).map(e => e.problem), ['sameName', 'sameName']);   // two Sam Lees: whose photo is it?
+  assert.equal(by(5)[0].file.name, 'Mere Tuhoe.tif');
+  assert.equal(entries.find(e => !e.person).problem, 'notFound');
+  assert.deepEqual(unusedFiles.map(f => f.name), ['Nobody Here.png']);
+  // Photos only, no CSV: the same matches.
+  const photos = planUpdate(people, [], files, fields, value);
+  assert.deepEqual(photos.entries.filter(e => !e.problem).map(e => e.person.id), [1, 5]);
+  // The same person twice in the CSV: neither row is used.
+  const twice = planUpdate(people, [rows[0], { ...rows[0], position: 'Manager' }], [], fields, value);
+  assert.deepEqual(twice.entries.map(e => e.problem), ['twice', 'twice']);
+});
+
+test('the vendored readers open HEIC and TIFF files', async () => {
+  const { createRequire } = await import('node:module'), fs = await import('node:fs'), vm = await import('node:vm');
+  const dir = new URL('../../web/js/vendor/', import.meta.url), fx = (n) => fs.readFileSync(new URL(`fixtures/${n}`, import.meta.url));
+  const orange = (px) => Math.abs(px[0] - 200) < 12 && Math.abs(px[1] - 120) < 12 && Math.abs(px[2] - 61) < 12;
+  const lib = createRequire(import.meta.url)(new URL('libheif/libheif.js', dir).pathname)({ locateFile: (f) => new URL(`libheif/${f}`, dir).pathname });
+  const im = new lib.HeifDecoder().decode(fx('photo.heic'))[0], data = { data: new Uint8ClampedArray(48 * 32 * 4), width: 48, height: 32 };
+  assert.deepEqual([im.get_width(), im.get_height()], [48, 32]);
+  await new Promise((ok, no) => im.display(data, d => d ? ok() : no(new Error('display failed'))));
+  assert.ok(orange(data.data), `HEIC pixel ${data.data.slice(0, 3)}`);
+  const ctx = vm.createContext({ Uint8Array, Uint16Array, Uint32Array, Int8Array, Int16Array, Int32Array, Float32Array, Float64Array, ArrayBuffer, DataView, Math, String, Array, Error, console });
+  ctx.self = ctx;
+  for (const f of ['pako_inflate.min.js', 'UTIF.js']) vm.runInContext(fs.readFileSync(new URL(`utif/${f}`, dir), 'utf8'), ctx);
+  const b = fx('photo.tif'), buf = b.buffer.slice(b.byteOffset, b.byteOffset + b.length), page = ctx.UTIF.decode(buf)[0];
+  ctx.UTIF.decodeImage(buf, page);
+  assert.deepEqual([page.width, page.height], [48, 32]);
+  assert.ok(orange(ctx.UTIF.toRGBA8(page)));
 });

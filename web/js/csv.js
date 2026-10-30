@@ -90,3 +90,35 @@ export function matchPhoto(index, person) {
   const f = person.firstName, l = person.lastName;
   return (nameKey(f + l) && index.get(nameKey(f + l))) || (nameKey(l + f) && index.get(nameKey(l + f))) || null;
 }
+
+// Bulk update: what a CSV and/or a set of photos would change for the people already in a client. Rows and photos
+// are matched to people by name (first name then last name, as for photos). A blank cell leaves that detail as it is,
+// and names are never changed (they're how people are found). `fields`: the detail keys a CSV can set (built-in and
+// custom); `value(person, key)` reads a person's current value. Each entry:
+//   { person, row, file, changes, problem }   problem: null (ready), 'noChange', 'notFound' (a row matching nobody),
+//   'sameName' (more than one person has that name, so it's not clear whose it is) or 'twice' (in the CSV twice).
+// `unusedFiles`: photos that matched nobody.
+export function planUpdate(existing, rows, files, fields, value) {
+  const people = new Map();
+  for (const p of existing) { const k = nameKey(p.firstName + p.lastName); if (k) people.set(k, [...(people.get(k) || []), p]); }
+  const index = buildPhotoIndex(files), used = new Set(), byName = new Map(), entries = [];
+  const photo = (who) => { const f = matchPhoto(index, who); if (f) used.add(f); return f; };
+  const add = (e) => { entries.push(e); return e; };
+  for (const row of rows) {
+    const k = nameKey(row.firstName + row.lastName), found = people.get(k) || [];
+    if (!found.length) { add({ person: null, row, file: null, changes: {}, problem: 'notFound' }); continue; }
+    if (byName.has(k)) { for (const e of byName.get(k)) if (e.problem !== 'sameName') Object.assign(e, { problem: 'twice', changes: {}, file: null }); add({ person: found[0], row, file: null, changes: {}, problem: 'twice' }); continue; }
+    if (found.length > 1) { photo(row); byName.set(k, found.map(person => add({ person, row, file: null, changes: {}, problem: 'sameName' }))); continue; }
+    const person = found[0], changes = {};
+    for (const f of fields) if (row[f] && row[f] !== (value(person, f) || '')) changes[f] = row[f];
+    byName.set(k, [add({ person, row, file: photo(row.photoFile ? row : person), changes, problem: null })]);
+  }
+  // Photos for people the CSV didn't list (or with no CSV at all).
+  if (files.length) for (const [k, found] of people) {
+    if (byName.has(k)) continue;
+    const file = photo(found[0]);
+    if (file) for (const person of found) add({ person, row: null, file: found.length > 1 ? null : file, changes: {}, problem: found.length > 1 ? 'sameName' : null });
+  }
+  for (const e of entries) if (!e.problem && !e.file && !Object.keys(e.changes).length) e.problem = 'noChange';
+  return { entries, unusedFiles: files.filter(f => !used.has(f)) };
+}

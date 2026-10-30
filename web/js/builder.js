@@ -1,7 +1,7 @@
 // ID Card Printing Software Free - Copyright (c) 2026 Josh McNabb. All rights reserved. See LICENSE.txt.
 // Visual card template builder: pick a background per side, tick fields, drag them onto the
 // card, then move, resize and style them. Everything is drawn by the same renderer used for printing.
-import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, templateImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims, photoSpec } from './render.js';
+import { drawCard, drawBarcode, barcodeValue, assetUrl, FONTS, templateImage, fieldInfo, customFields, isPersonField, BARCODE_TYPES, DATE_FORMATS, formatDate, CARD_SIZES, CUSTOM_MM, cardFor, cardInfo, cardLabel, cardDims, photoSpec, PHOTO_ACCEPT } from './render.js';
 
 const SNAP = 7;           // card pixels
 const TICKABLE = ['photo', 'firstName', 'lastName', 'staffId', 'position', 'title', 'address'];
@@ -198,7 +198,7 @@ export function createBuilder(ctx) {
         ${backOff ? '' : `<div class="tpl"><div class="tthumb" style="background-image:url('${assetUrl(side.background) || ''}');width:${Math.round(CARD.w * tk)}px;height:${Math.round(CARD.h * tk)}px"></div><div class="row" style="gap:6px"><button class="btn sm" id="bUp">${ICON.upload}${side.background ? 'Change' : 'Choose'} image</button>${side.background ? '<button class="btn sm ghost danger" id="bClr">Remove</button>' : ''}</div></div>
         <label class="f" style="flex-direction:row;align-items:center;gap:10px">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>
         ${side.background ? fade('bBgOp', 'Image opacity', side.bgOpacity, 0) + tone('bBgT', side, BG_TONE, 'Adjustments') : ''}`}
-        <input type="file" id="bFile" accept="image/*" hidden></div>
+        <input type="file" id="bFile" accept="${PHOTO_ACCEPT}" hidden></div>
       <div class="fieldset"><h3>Fields</h3>
         <div class="flist">${[...TICKABLE, ...customFields()].map(f => { const on = t.has(f); const sides = placed(f); const here = sides.includes(B.side);
           return `<div class="fld ${on ? 'on' : ''}"><label><input type="checkbox" data-tick="${f}" ${on ? 'checked' : ''}><span>${esc(fieldInfo(f).label)}</span></label>
@@ -282,7 +282,7 @@ export function createBuilder(ctx) {
           <button class="btn sm" id="b34" style="align-self:flex-start">Make 3:4 portrait</button></div>`,
       image: `<div class="fieldset"><h3>Image</h3><div class="row" style="gap:6px"><button class="btn sm" id="bImg">${ICON.upload}${e.asset ? 'Change' : 'Choose'} image</button></div>
           <div class="f"><span>Fit</span>${seg('fit', [['contain', 'Fit inside'], ['cover', 'Fill box']])}</div>
-          <input type="file" id="bImgFile" accept="image/*" hidden></div>`,
+          <input type="file" id="bImgFile" accept="${PHOTO_ACCEPT}" hidden></div>`,
       box: `<div class="fieldset"><h3>Shape</h3><div class="row" style="gap:10px">${colour('fill', 'Fill')}${toggle('noFill', 'No fill')}</div>
           <div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div><div class="row">${colour('borderColor', 'Border')}</div></div>`,
       barcode: `<div class="fieldset"><h3>Barcode</h3>

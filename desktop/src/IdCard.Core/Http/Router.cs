@@ -49,7 +49,7 @@ internal sealed partial class Router
     {
         [".html"] = "text/html; charset=utf-8", [".js"] = "text/javascript; charset=utf-8", [".mjs"] = "text/javascript; charset=utf-8", [".css"] = "text/css; charset=utf-8",
         [".png"] = "image/png", [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".webp"] = "image/webp", [".gif"] = "image/gif", [".svg"] = "image/svg+xml",
-        [".ico"] = "image/x-icon", [".woff2"] = "font/woff2", [".json"] = "application/json", [".txt"] = "text/plain; charset=utf-8",
+        [".ico"] = "image/x-icon", [".woff2"] = "font/woff2", [".json"] = "application/json", [".txt"] = "text/plain; charset=utf-8", [".wasm"] = "application/wasm",
     };
     static readonly (string, string)[] SecurityHeaders = [("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer")];
 

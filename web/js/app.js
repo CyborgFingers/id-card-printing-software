@@ -1,9 +1,9 @@
 import { makeProofSheet } from './proof.js';
 import { createAdmin } from './admin.js';
-import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, photoSpec, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel } from './render.js';
+import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, photoSpec, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel, openImage, photoFormat, PHOTO_ACCEPT, PHOTO_FORMATS, showsAsIs } from './render.js';
 import { createBuilder } from './builder.js';
 import { LICENSE_TEXT, LICENSE_VERSION, SUPPORTED_PRINTERS_TEXT } from './legal.js';
-import { readPeople, buildPhotoIndex, matchPhoto } from './csv.js';
+import { readPeople, buildPhotoIndex, matchPhoto, planUpdate } from './csv.js';
 import { createHelp } from './helpview.js';
 // (people import uses these)
 
@@ -375,14 +375,7 @@ async function queueCards({ name, source, client, design, people, onProgress, is
   return b.id;
 }
 
-// Photo picker / adjuster used by single print and the bulk row editor.
-function fileToImage(file) {
-  return new Promise((resolve, reject) => {
-    if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name)) return reject(new Error(`${file.name} is not an image`));
-    const url = URL.createObjectURL(file);
-    const im = new Image(); im.onload = () => resolve({ img: im, url }); im.onerror = () => reject(new Error(`Could not read ${file.name}`)); im.src = url;
-  });
-}
+// Photo adjuster used by single print and the bulk row editor.
 // Drag the photo inside its box on a preview canvas; wheel to zoom.
 function enablePhotoPan(canvas, getState, onChange) {
   let drag = null;
@@ -436,13 +429,13 @@ const initials = (s) => String(s || '').split(/\s+/).filter(Boolean).slice(0, 2)
 // Photos are stored inside the encrypted database, so they are resized first to keep it compact
 // (1600 px on the long side is several times what the card needs at 300 dpi).
 async function shrinkPhoto(file) {
-  const { img, url } = await fileToImage(file);
+  const img = await openImage(file);
+  if (!img) throw new Error(`${file.name} can't be opened as a photo`);
   const max = 1600, k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
   const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height);   // JPEG has no transparency: cut-out photos get white, not black
   g.drawImage(img, 0, 0, c.width, c.height);
-  URL.revokeObjectURL(url);
   const dataUrl = c.toDataURL('image/jpeg', 0.92);
   const out = await loadImage(dataUrl);
   return { dataUrl, img: out, name: file.name };
@@ -516,7 +509,7 @@ VIEWS.client = {
   },
   onClients() {
     const [, id, tab = 'people'] = parts(); const c = clientById(id); if (!c) return;
-    if (tab === 'people' && !peopleTab.st.importing && !document.querySelector('.modal') && !document.activeElement?.closest('#pCard .toolbar')) peopleTab.reload();   // printed counts, card status
+    if (tab === 'people' && !peopleTab.st.importing && !peopleTab.st.updating && !document.querySelector('.modal') && !document.activeElement?.closest('#pCard .toolbar')) peopleTab.reload();   // printed counts, card status
     $('#title').textContent = c.name;
     const cnt = $('.seg .cnt'); if (cnt) cnt.textContent = c.people;
   },
@@ -548,19 +541,24 @@ function detailsTab(root, top, c) {
 
 // ---------------- people ----------------
 const peopleTab = {
-  st: { clientId: null, rows: [], q: '', show: 'all', sel: new Set(), designId: null, sides: null, importing: null },
+  st: { clientId: null, rows: [], q: '', show: 'all', sel: new Set(), designId: null, sides: null, importing: null, updating: null },
   async mount(root, top, c) {
     const st = this.st;
-    if (st.clientId !== c.id) Object.assign(st, { clientId: c.id, rows: [], q: '', sel: new Set(), designId: null, sides: null, importing: null });
+    if (st.clientId !== c.id) Object.assign(st, { clientId: c.id, rows: [], q: '', sel: new Set(), designId: null, sides: null, importing: null, updating: null });
     if (!st.designId || !clientDesigns(c.id).some(d => d.id === st.designId)) st.designId = clientDefaultDesign(c)?.id;
     if (!st.sides) st.sides = defaultSides();
     this.root = root; this.top = top; this.client = c;
     if (st.importing) return importer.mount(root, top, c);
-    top.innerHTML = `<a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download>${ICON.download}Blank CSV template</a><a class="btn" href="/api/clients/${c.id}/people.csv" download title="Everyone in this client, with all their details (photos not included)">${ICON.download}Export people</a><button class="btn" id="pImport">${ICON.upload}Import from CSV</button><button class="btn primary" id="pAdd">${ICON.plus}Add person</button>`;
+    if (st.updating) return updater.mount(root, top, c);
+    // Downloads | bulk actions | add
+    top.innerHTML = `<a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download>${ICON.download}Blank CSV template</a><a class="btn" href="/api/clients/${c.id}/people.csv" download title="Everyone in this client, with all their details (photos not included)">${ICON.download}Export people</a><span class="vr"></span>
+      <button class="btn" id="pImport">${ICON.upload}Import from CSV</button><button class="btn" id="pUpdate" disabled>${ICON.retry}Bulk update</button><span class="vr"></span><button class="btn primary" id="pAdd">${ICON.plus}Add person</button>`;
     $('#pAdd').onclick = () => personModal(c, null);
-    $('#pImport').onclick = () => { st.importing = { people: [], files: [], csvName: '', warning: '' }; importer.mount(root, top, c); };
+    $('#pImport').onclick = () => { st.importing = { people: [], files: [], types: allTypes(), csvName: '', warning: '' }; importer.mount(root, top, c); };
+    $('#pUpdate').onclick = () => { st.updating = { rows: [], csvName: '', warning: '', files: [], types: allTypes(), excluded: new Set(), urls: new Map(), plan: { entries: [], unusedFiles: [] } }; updater.mount(root, top, c); };
     root.innerHTML = `<div class="card" id="pCard"><div class="empty">Loading people…</div></div>`;
     try { st.rows = await api('GET', `/api/clients/${c.id}/people`); } catch (e) { toast(e.message, 'err'); return; }
+    $('#pUpdate')?.removeAttribute('disabled');   // it matches against the people just loaded
     this.paint();
   },
   async reload() { try { this.st.rows = await api('GET', `/api/clients/${this.client.id}/people`); } catch (e) {} this.paint(); },
@@ -637,7 +635,7 @@ function personModal(c, p) {
       <div class="grid2"><label class="f">First name<input class="input" id="eFirst" value="${esc(st.firstName)}" autocomplete="off"></label><label class="f">Last name<input class="input" id="eLast" value="${esc(st.lastName)}" autocomplete="off"></label></div>
       ${fields.length ? `<div class="grid2">${fields.map(f => f === 'address' ? `<label class="f" style="grid-column:1 / -1">Address<textarea class="input" data-pf="address" rows="2">${esc(st.address)}</textarea></label>` : !PERSON_FIELDS.includes(f) ? customInput(f, st.extra[f]) : `<label class="f">${fieldLabel(f)}<input class="input" data-pf="${f}" value="${esc(st[f])}" autocomplete="off"></label>`).join('')}</div>` : ''}
       <div class="drop" id="eDrop" tabindex="0" role="button" aria-label="Choose ID photo" ${photoSpecLine(d) ? 'aria-describedby="eSpec"' : ''}><div class="ph" id="ePh">${p?.hasPhoto ? `<img src="${photoUrl(p)}" alt="">` : ICON.image}</div><div><b id="eName">${st.hasPhoto ? esc(st.photoName || 'Photo saved') : 'Drop a photo here or click to choose'}</b>${photoSpecLine(d) ? `<span class="num" id="eSpec">At least ${photoSpecLine(d)}</span>` : ''}</div></div>
-      <input type="file" id="eFile" accept="image/*" hidden>
+      <input type="file" id="eFile" accept="${PHOTO_ACCEPT}" hidden>
       <label class="f">Zoom<input type="range" id="eZoom" min="1" max="4" step="0.01" value="${st.adj.zoom}"></label>
       <div class="row"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm" id="eWhole" ${st.hasPhoto ? '' : 'hidden'}>${ICON.image}Whole photo</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
       <label class="f">Notes<textarea class="input" id="eNotes" rows="2">${esc(st.notes)}</textarea></label>
@@ -738,6 +736,47 @@ async function queuePeople(c, people, { designId, sides }) {
   } catch (e) { m && m.close(); toast(e.message === 'cancelled' ? 'Stopped. Nothing from this selection was queued.' : e.message, e.message === 'cancelled' ? '' : 'err'); }
 }
 
+// ---------------- shared by Import from CSV and Bulk update ----------------
+// A CSV file's text: UTF-8, else Windows-1252 (Excel's plain "CSV" is ANSI).
+async function csvText(f) { const bytes = await f.arrayBuffer(); try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { return new TextDecoder('windows-1252').decode(bytes); } }
+// The photo step: Choose folder / Choose files, then a tick box per picture type with how many were found. `st.files` keeps every
+// supported file chosen; only the ticked types (`st.types`, all of them to start) are matched, so a tick changes the matches at once.
+const allTypes = () => new Set(PHOTO_FORMATS.map(f => f.key));
+const tickedFiles = (st) => st.files.filter(f => st.types.has(photoFormat(f)));
+const photosChosen = (st) => { const n = tickedFiles(st).length; return n === st.files.length ? `${plural(n, 'photo')} chosen` : `${n} of ${plural(st.files.length, 'photo')} ticked`; };
+function photoPicker(st, primary) {
+  const n = {}; for (const f of st.files) n[photoFormat(f)] = (n[photoFormat(f)] || 0) + 1;
+  return `<div class="row"><button class="btn ${primary ? 'primary' : ''}" data-pick="folder">${ICON.folder}Choose folder</button><button class="btn" data-pick="files">${ICON.image}Choose files</button>
+    <input type="file" data-in="folder" webkitdirectory multiple hidden><input type="file" data-in="files" accept="${PHOTO_ACCEPT}" multiple hidden></div>
+    <div class="types">${PHOTO_FORMATS.map(f => `<label class="${st.files.length && !n[f.key] ? 'dim' : ''}"><input type="checkbox" data-type="${f.key}" ${st.types.has(f.key) ? 'checked' : ''}>${f.label}${st.files.length ? `<span class="num">${n[f.key] || 0}</span>` : ''}</label>`).join('')}</div>`;
+}
+function bindPhotoPicker(box, st, onChange) {
+  $$('[data-pick]', box).forEach(b => b.onclick = () => $(`[data-in="${b.dataset.pick}"]`, box).click());
+  $$('[data-in]', box).forEach(i => i.onchange = e => {
+    const imgs = [...e.target.files].filter(photoFormat);
+    if (!imgs.length) { toast('No image files found there', 'err'); return; }
+    const seen = new Set(st.files.map(f => f.name.toLowerCase()));
+    for (const f of imgs) if (!seen.has(f.name.toLowerCase())) st.files.push(f);
+    onChange();
+  });
+  $$('[data-type]', box).forEach(i => i.onchange = e => { st.types[e.target.checked ? 'add' : 'delete'](i.dataset.type); onChange(); });
+}
+// Review-table thumbnails. An <img> of a HEIC or TIFF file shows nothing, so those start as a type label and are opened
+// (openImage, with its decoder) only when their row scrolls into view, once per file; the other types the window shows as they are.
+const thumbs = new WeakMap();   // file → Promise of a small JPEG data URL (null when it can't be opened)
+async function smallThumb(file) {
+  const img = await openImage(file).catch(() => null); if (!img) return null;
+  const k = Math.min(1, 96 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.8);
+}
+const thumbIO = new IntersectionObserver(hits => hits.forEach(h => {
+  if (!h.isIntersecting) return; thumbIO.unobserve(h.target); const f = h.target._file;
+  if (!thumbs.has(f)) thumbs.set(f, smallThumb(f));
+  thumbs.get(f).then(src => { if (src && h.target.isConnected) h.target.outerHTML = `<img class="thumb" src="${src}" alt="">`; });
+}));
+const thumbHtml = (file, urlOf) => !file ? '<div class="thumb"></div>' : showsAsIs(file) ? `<img class="thumb" src="${urlOf(file)}" alt="" loading="lazy">` : `<div class="thumb noph ty" data-lazy>${PHOTO_FORMATS.find(f => f.key === photoFormat(file)).label}</div>`;
+const watchThumbs = (box, fileOf) => $$('[data-lazy]', box).forEach(el => { el._file = fileOf(el.closest('tr')); thumbIO.observe(el); });
+
 // ---------------- import people from CSV + photos into a client ----------------
 const importer = {
   mount(root, top, c) {
@@ -752,36 +791,26 @@ const importer = {
       <div class="card step ${im.people.length ? 'done' : ''}"><span class="n">${im.people.length ? '✓' : '2'}</span><h3>Upload the completed CSV</h3>
         <div class="row"><button class="btn ${im.people.length ? '' : 'primary'}" id="iCsvBtn">${ICON.upload}${im.people.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="iCsv" accept=".csv,text/csv" hidden></div>
         ${im.people.length ? `<span class="st">${esc(im.csvName)}: ${plural(im.people.length, 'person')}</span>` : ''}${im.warning ? `<span class="st warn">${esc(im.warning)}</span>` : ''}</div>
-      <div class="card step ${im.files.length ? 'done' : ''}"><span class="n">${im.files.length ? '✓' : '3'}</span><h3>Add the ID photos</h3>
+      <div class="card step ${im.files.length ? 'done' : ''}" id="iPhotos"><span class="n">${im.files.length ? '✓' : '3'}</span><h3>Add the ID photos</h3>
         ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c)) ? `<span class="hint num">At least ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c))}</span>` : ''}
-        <div class="row"><button class="btn ${im.people.length && !im.files.length ? 'primary' : ''}" id="iFolderBtn">${ICON.folder}Choose folder</button><button class="btn" id="iFilesBtn">${ICON.image}Choose files</button>
-        <input type="file" id="iFolder" webkitdirectory multiple hidden><input type="file" id="iFiles" accept="image/*" multiple hidden></div>
-        ${im.files.length ? `<span class="st ${matched < im.people.length ? 'warn' : ''}">${plural(im.files.length, 'photo')} chosen · ${matched} of ${im.people.length} matched</span>` : ''}</div></div>
+        ${photoPicker(im, im.people.length && !im.files.length)}
+        ${im.files.length ? `<span class="st ${matched < im.people.length ? 'warn' : ''}">${photosChosen(im)} · ${matched} of ${im.people.length} matched</span>` : ''}</div></div>
       <div class="card" id="iTable"></div></div>`;
-    $('#iCsvBtn').onclick = () => $('#iCsv').click(); $('#iFolderBtn').onclick = () => $('#iFolder').click(); $('#iFilesBtn').onclick = () => $('#iFiles').click();
+    $('#iCsvBtn').onclick = () => $('#iCsv').click();
     $('#iCsv').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
-      const bytes = await f.arrayBuffer();
-      let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (err) { text = new TextDecoder('windows-1252').decode(bytes); }   // Excel's plain "CSV" is ANSI
-      const { people, warning } = readPeople(text, S.config.customFields);
+      const { people, warning } = readPeople(await csvText(f), S.config.customFields);
       if (!people.length) { toast('No people found in that CSV', 'err'); return; }
       this.release();
       const existing = new Set(peopleTab.st.rows.map(p => `${p.firstName} ${p.lastName}`.toLowerCase().trim()));
       im.people = people.map(p => { const dup = existing.has(`${p.firstName} ${p.lastName}`.toLowerCase().trim()); return { ...p, id: uid(), include: !dup, dup }; });
       im.csvName = f.name; im.warning = warning; this.match(); this.mount(root, top, c);
     };
-    const addFiles = e => {
-      const imgs = [...e.target.files].filter(f => /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name));
-      if (!imgs.length) { toast('No image files found there', 'err'); return; }
-      const seen = new Set(im.files.map(f => f.name.toLowerCase()));
-      for (const f of imgs) if (!seen.has(f.name.toLowerCase())) im.files.push(f);
-      this.match(); this.mount(root, top, c);
-    };
-    $('#iFolder').onchange = addFiles; $('#iFiles').onchange = addFiles;
+    bindPhotoPicker($('#iPhotos'), im, () => { this.match(); this.mount(root, top, c); });
     this.table();
   },
   match() {
-    const im = peopleTab.st.importing; const idx = buildPhotoIndex(im.files);
+    const im = peopleTab.st.importing; const idx = buildPhotoIndex(tickedFiles(im));
     const found = im.people.map(p => matchPhoto(idx, p));
     // Two people with the same name would both get that name's photo: they're imported without one, to add by hand.
     const uses = new Map(); found.forEach((f, i) => { if (f && !im.people[i].photoFile) uses.set(f, (uses.get(f) || 0) + 1); });
@@ -809,12 +838,13 @@ const importer = {
         <button class="btn primary lg" id="iGo" ${ok.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(ok.length, 'person')}</button></div>
       <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th><th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
       <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>
-        <td>${p.url ? `<img class="thumb" src="${p.url}" alt="" loading="lazy">` : '<div class="thumb"></div>'}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
+        <td>${thumbHtml(p.file, () => p.url)}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
         ${cols.map(f => `<td class="muted" style="max-width:200px;white-space:pre-line">${esc(fieldInfo(f).type === 'date' ? formatDate(p[f], 'DD/MM/YYYY') : p[f]) || '—'}</td>`).join('')}
         <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.file ? p.file.name : p.photoFile) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;
     if (y) $('.tbl-wrap', box).scrollTop = y;
     $('#iAll').onchange = e => { im.people.forEach(p => p.include = e.target.checked); this.table(); };
     $$('tbody tr', box).forEach(tr => { const p = im.people.find(x => x.id === tr.dataset.id); $('[data-inc]', tr).onchange = e => { p.include = e.target.checked; this.table(); }; });
+    watchThumbs(box, tr => im.people.find(x => x.id === tr.dataset.id)?.file);
     $('#iGo').onclick = () => this.run(ok);
   },
   async run(list) {
@@ -843,6 +873,85 @@ const importer = {
     if (!clientDefaultDesign(c)) { if (failed.length) modal({ title: `Imported ${plural(added.length, 'person')}`, body: notes, actions: [{ label: 'OK', kind: 'primary' }] }); return; }
     modal({ title: `Imported ${plural(added.length, 'person')}`, text: 'Print their cards now?', body: notes,
       actions: [{ label: 'Not now' }, { label: `Print ${plural(added.length, 'card')}`, kind: 'primary', onClick: () => { setTimeout(() => printPeople(c, added, { designId: peopleTab.st.designId, sides: peopleTab.st.sides }), 30); } }] });
+  },
+};
+
+// ---------------- bulk update: new details and photos for the people already in a client ----------------
+// Nobody is added or deleted. A CSV (First Name, Last Name and the details to change) and/or photos named after people are
+// matched to the people by name (csv.js planUpdate); each person then gets one PUT of only what changes.
+const updateFields = () => [...PERSON_FIELDS, ...customFields()].filter(f => !['firstName', 'lastName'].includes(f));
+const UPDATE_CHIP = { noChange: ['info', 'No changes'], notFound: ['err', 'Not found'], sameName: ['warn', 'Same name twice: skipped'], twice: ['warn', 'In the CSV twice: skipped'] };
+const updater = {
+  mount(root, top, c) {
+    const u = peopleTab.st.updating; this.root = root; this.top = top; this.client = c;
+    top.innerHTML = `<button class="btn" id="uCancel">${ICON.x}Cancel update</button>`;
+    $('#uCancel').onclick = () => { this.release(); peopleTab.st.updating = null; peopleTab.mount(root, top, c); };
+    const ticked = tickedFiles(u).length, matched = ticked - u.plan.unusedFiles.length;
+    root.innerHTML = `<div class="stack" style="gap:20px"><div class="steps two">
+      <div class="card step ${u.rows.length ? 'done' : ''}"><span class="n">${u.rows.length ? '✓' : '1'}</span><h3>Upload a CSV of changes</h3>
+        <div class="row"><a class="btn" href="/api/clients/${c.id}/people.csv" download>${ICON.download}Export people</a><button class="btn ${u.rows.length ? '' : 'primary'}" id="uCsvBtn">${ICON.upload}${u.rows.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="uCsv" accept=".csv,text/csv" hidden></div>
+        ${u.rows.length ? `<span class="st">${esc(u.csvName)}: ${plural(u.rows.length, 'person')}</span>` : ''}${u.warning ? `<span class="st warn">${esc(u.warning)}</span>` : ''}</div>
+      <div class="card step ${u.files.length ? 'done' : ''}" id="uPhotos"><span class="n">${u.files.length ? '✓' : '2'}</span><h3>Add the ID photos</h3>
+        ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c)) ? `<span class="hint num">At least ${photoSpecLine(S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c))}</span>` : ''}
+        ${photoPicker(u, u.rows.length && !u.files.length)}
+        ${u.files.length ? `<span class="st ${matched < ticked ? 'warn' : ''}">${photosChosen(u)} · ${matched} matched</span>` : ''}</div></div>
+      <div class="card" id="uTable"></div></div>`;
+    $('#uCsvBtn').onclick = () => $('#uCsv').click();
+    $('#uCsv').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const { people, warning } = readPeople(await csvText(f), S.config.customFields);
+      if (!people.length) { toast('No people found in that CSV', 'err'); return; }
+      u.rows = people; u.csvName = f.name; u.warning = warning; this.plan(); this.mount(root, top, c);
+    };
+    bindPhotoPicker($('#uPhotos'), u, () => { this.plan(); this.mount(root, top, c); });
+    this.table();
+  },
+  plan() { const u = peopleTab.st.updating; u.plan = planUpdate(peopleTab.st.rows, u.rows, tickedFiles(u), updateFields(), (p, k) => PERSON_FIELDS.includes(k) ? p[k] : (p.extra || {})[k]); },
+  // One object URL per new photo for its thumbnail, released when the screen closes.
+  url(f) { const u = peopleTab.st.updating; if (!u.urls.has(f)) u.urls.set(f, URL.createObjectURL(f)); return u.urls.get(f); },
+  release() { const u = peopleTab.st.updating; if (u) for (const url of u.urls.values()) URL.revokeObjectURL(url); },
+  included: (e) => !e.problem && !peopleTab.st.updating.excluded.has(e.person.id),
+  table() {
+    const u = peopleTab.st.updating, box = $('#uTable'); if (!box) return;
+    const { entries, unusedFiles } = u.plan;
+    if (!entries.length && !unusedFiles.length) { box.innerHTML = `<div class="empty">${ICON.stack}<b>Nothing to review yet</b></div>`; return; }
+    const ok = entries.filter(this.included), hasCsv = !!u.rows.length;   // the # column is the CSV row, so only with a CSV
+    const show = (k, v) => fieldInfo(k).type === 'date' ? formatDate(v, 'DD/MM/YYYY') : (v || '');
+    const changes = (e) => [...Object.entries(e.changes).map(([k, v]) => `${esc(fieldLabel(k))}: ${esc(show(k, PERSON_FIELDS.includes(k) ? e.person[k] : (e.person.extra || {})[k])) || '—'} → ${esc(show(k, v))}`), ...(e.file ? [e.person.hasPhoto ? 'Replaces photo' : 'Adds photo'] : [])];
+    const y = $('.tbl-wrap', box)?.scrollTop;
+    box.innerHTML = `<div class="toolbar"><b>Review before updating</b><span class="sp"></span>
+        <button class="btn primary lg" id="uGo" ${ok.length ? '' : 'disabled'}>${ICON.retry}Update ${plural(ok.length, 'person')}</button></div>
+      ${entries.length ? `<div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="uAll" ${entries.filter(e => !e.problem).every(this.included) ? 'checked' : ''} aria-label="Select all"></th>${hasCsv ? '<th>#</th>' : ''}<th>Photo</th><th>First name</th><th>Last name</th><th>Changes</th><th>Photo file</th><th>Status</th></tr></thead>
+      <tbody>${entries.map((e, i) => { const [k, l] = e.problem ? UPDATE_CHIP[e.problem] : ['ok', 'Ready'], inc = this.included(e), who = e.person || e.row; return `<tr data-i="${i}" class="${inc ? 'sel' : ''}"><td><input type="checkbox" data-inc ${inc ? 'checked' : ''} ${e.problem ? 'disabled' : ''} aria-label="Include"></td>${hasCsv ? `<td class="num muted">${e.row ? e.row.row : '—'}</td>` : ''}
+        <td>${thumbHtml(e.file, f => this.url(f))}</td><td class="nm">${esc(who.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(who.lastName) || '<span class="muted">—</span>'}</td>
+        <td class="muted" style="max-width:360px">${changes(e).join('<br>') || '—'}</td><td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.file?.name) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><b>No one matched</b></div>`}
+      ${unusedFiles.length ? `<details class="unused"><summary>${plural(unusedFiles.length, 'photo')} matched nobody</summary><div>${unusedFiles.map(f => esc(f.name)).join(' · ')}</div></details>` : ''}`;
+    if (y) $('.tbl-wrap', box).scrollTop = y;
+    $('#uAll') && ($('#uAll').onchange = e => { for (const x of entries) if (!x.problem) u.excluded[e.target.checked ? 'delete' : 'add'](x.person.id); this.table(); });
+    $$('tbody tr', box).forEach(tr => { const e = entries[+tr.dataset.i]; $('[data-inc]', tr).onchange = ev => { u.excluded[ev.target.checked ? 'delete' : 'add'](e.person.id); this.table(); }; });
+    watchThumbs(box, tr => entries[+tr.dataset.i].file);
+    $('#uGo').onclick = () => this.run(ok);
+  },
+  async run(list) {
+    const c = this.client; let stop = false, done = 0; const failed = [];
+    const m = modal({ title: `Updating ${plural(list.length, 'person')}`, body: `<div class="stack" style="gap:10px"><div class="progress"><i id="uBar" style="width:0%"></i></div><div class="row"><b id="uMsg" class="num">Starting…</b><span class="sp"></span><span class="muted num" id="uPct">0%</span></div></div>`, actions: [{ label: 'Stop', kind: 'danger', onClick: () => { stop = true; return false; } }] });
+    m.el.dataset.locked = '1';
+    for (let i = 0; i < list.length; i++) {
+      if (stop) break;
+      const { person: p, file, changes } = list[i];
+      try {
+        const body = {};   // only what changes; the service keeps everything else
+        for (const [k, v] of Object.entries(changes)) { if (PERSON_FIELDS.includes(k)) body[k] = v; else (body.extra ??= {})[k] = v; }
+        if (file) { const r = await shrinkPhoto(file); Object.assign(body, { photo: r.dataUrl, photoName: file.name, adj: { zoom: 1, ox: 0, oy: 0 } }); }   // a new photo starts at the template's fit
+        await api('PUT', `/api/people/${p.id}`, body); done++;
+      } catch (e) { failed.push(`${`${p.firstName} ${p.lastName}`.trim()}: ${e.message}`); }
+      $('#uBar').style.width = `${((i + 1) / list.length) * 100}%`; $('#uMsg').textContent = `Updating ${i + 1} of ${list.length}: ${p.firstName} ${p.lastName}`; $('#uPct').textContent = `${Math.round(((i + 1) / list.length) * 100)}%`;
+    }
+    m.close();
+    this.release(); peopleTab.st.updating = null;
+    await peopleTab.mount(this.root, this.top, c);
+    if (done) toast(`Updated ${plural(done, 'person')}${stop ? ' (stopped early)' : ''}`, 'ok');
+    if (failed.length) modal({ title: done ? `Updated ${plural(done, 'person')}` : 'Nobody was updated', body: `<p class="hint">Not updated:</p><ul class="hint">${failed.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`, actions: [{ label: 'OK', kind: 'primary' }] });
   },
 };
 

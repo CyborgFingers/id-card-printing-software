@@ -83,7 +83,10 @@ add their people (or import them from a spreadsheet with their photos) and print
   themselves, such as a card number.
 - **Import from CSV** with a folder of photos: name each photo after the person (`John Smith.jpg`, `johnsmith.jpg`
   or `JOHN SMITH.jpg` all match John Smith), or name the photo file in the CSV. Photos are matched automatically and fitted to the card's photo frame, with a
-  review step before anything is saved.
+  review step before anything is saved. Photos can be JPG, PNG, HEIC (iPhone), WebP, TIFF, AVIF, BMP or GIF, converted
+  as needed; untick any type to leave it out.
+- **Bulk update** the people already in a client: a folder of photos matched by name, and/or a CSV of changed details
+  (blank cells are left alone). Nobody is added or deleted.
   Export people and print history to CSV.
 - **Card status**: mark cards lost or returned, see cards that are expired or expiring soon, and filter people who have
   never been printed.
@@ -110,8 +113,8 @@ add their people (or import them from a spreadsheet with their photos) and print
 ### Security and backups
 - **Administrator and operator accounts.** Operators add people and print; administrators do everything else.
   New accounts must choose their own password; too many wrong passwords pauses sign-in; idle sessions sign out.
-- **One encrypted database** holds everything, including photos and card images. The key is tied to your Windows
-  account, so a copied database file cannot be opened elsewhere.
+- **One encrypted database** holds everything, including photos and card images, shared by every Windows account on
+  the PC. The key is tied to the PC, so a copied database file cannot be opened elsewhere.
 - **Encrypted backups** (`.idcbak`) protected by a backup password you choose: download one whenever you like, or turn
   on automatic daily or weekly backups to a folder or network share and keep the newest few.
 - **Restore** from a backup on this PC or a new one.

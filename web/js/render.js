@@ -30,21 +30,80 @@ export const cardLabel = (card) => { const c = cardInfo(card); return `${c.size 
 export const cardDims = (card) => { const c = cardInfo(card); return `${mm(c.mmW)} × ${mm(c.mmH)} mm · ${c.w} × ${c.h} px`; };
 
 const imgCache = new Map();
-/** A picture chosen for a template (background or logo) in a form the service keeps (PNG, JPG or WebP), at most
- *  maxSide pixels: anything this window can open works, such as GIF, BMP or SVG, and transparency is kept. */
-export async function templateImage(file, maxSide = 2400) {
-  const url = URL.createObjectURL(file);
+
+// Picture formats the program reads. The window opens most of them itself; iPhone photos (HEIC/HEIF) and TIFF are
+// converted here first, with js/vendor/libheif and js/vendor/utif, loaded only when one is opened.
+export const PHOTO_FORMATS = [
+  { key: 'jpg', label: 'JPG', ext: ['jpg', 'jpeg', 'jpe', 'jfif'] },
+  { key: 'heic', label: 'HEIC', ext: ['heic', 'heif', 'hif'] },
+  { key: 'png', label: 'PNG', ext: ['png'] },
+  { key: 'webp', label: 'WebP', ext: ['webp'] },
+  { key: 'tiff', label: 'TIFF', ext: ['tif', 'tiff'] },
+  { key: 'avif', label: 'AVIF', ext: ['avif'] },
+  { key: 'bmp', label: 'BMP', ext: ['bmp', 'dib'] },
+  { key: 'gif', label: 'GIF', ext: ['gif'] },
+];
+/** A picture file's format from its name ('jpg', 'heic'...), or null. */
+export const photoFormat = (file) => { const x = /\.([^.]+)$/.exec(String(file?.name || ''))?.[1].toLowerCase(); return PHOTO_FORMATS.find(f => f.ext.includes(x))?.key || null; };
+/** For file inputs: Windows doesn't always count HEIC or TIFF as image/*. */
+export const PHOTO_ACCEPT = ['image/*', ...PHOTO_FORMATS.flatMap(f => f.ext.map(x => `.${x}`))].join(',');
+/** Whether the window shows the file as it is (an <img> of the file itself works); HEIC and TIFF need opening first. */
+export const showsAsIs = (file) => !['heic', 'tiff'].includes(photoFormat(file));
+
+const vendor = new URL('./vendor/', import.meta.url).href;
+const script = (path) => new Promise((ok, fail) => { const s = document.createElement('script'); s.src = vendor + path; s.onload = ok; s.onerror = () => fail(new Error('A picture reader could not be loaded. Close the program and open it again.')); document.head.append(s); });
+let heifLib = null, tiffLib = null;
+// The .wasm is fetched here and handed over: left to itself, this build reads it with a synchronous request, which windows refuse.
+const libheif = () => heifLib ??= Promise.all([script('libheif/libheif.js'), fetch(vendor + 'libheif/libheif.wasm').then((r) => r.ok ? r.arrayBuffer() : Promise.reject(new Error('A picture reader could not be loaded. Close the program and open it again.')))])
+  .then(([, wasmBinary]) => new Promise((ok, fail) => {
+    let m = null;   // set once the factory returns (it can finish starting before that)
+    m = globalThis.libheif({ wasmBinary, onRuntimeInitialized: () => setTimeout(() => ok(m)), onAbort: () => fail(new Error('The HEIC reader could not start.')) });
+  })).catch((e) => { heifLib = null; throw e; });
+const utif = () => tiffLib ??= script('utif/pako_inflate.min.js').then(() => script('utif/UTIF.js')).then(() => globalThis.UTIF).catch((e) => { tiffLib = null; throw e; });
+const pixelsToBlob = (data, type) => { const c = document.createElement('canvas'); c.width = data.width; c.height = data.height; c.getContext('2d').putImageData(data, 0, 0); return new Promise((ok) => c.toBlob(ok, type, 0.95)); };
+
+async function heicToBlob(file) {
+  const lib = await libheif(), images = new lib.HeifDecoder().decode(new Uint8Array(await file.arrayBuffer()));
   try {
-    const img = await loadImage(url);
-    if (!img) throw new Error(`${file.name} can't be opened${/\.hei[cf]$/i.test(file.name) ? ': iPhone photos (HEIC) need saving as JPG first' : ''}. Choose a PNG, JPG or WebP picture.`);
-    const iw = img.naturalWidth || 1200, ih = img.naturalHeight || 1200;   // an SVG without a size
-    const k = Math.min(1, maxSide / Math.max(iw, ih));
-    if (k === 1 && img.naturalWidth && ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return { blob: file, type: file.type, w: iw, h: ih };
-    const c = document.createElement('canvas'); c.width = Math.round(iw * k); c.height = Math.round(ih * k);
-    const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, c.width, c.height);
-    const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-    return { blob: await new Promise(r => c.toBlob(r, type, 0.92)), type, w: c.width, h: c.height };
-  } finally { imgCache.delete(url); URL.revokeObjectURL(url); }
+    const im = images.find((i) => i.is_primary?.()) || images[0];
+    if (!im) return null;
+    const data = new ImageData(im.get_width(), im.get_height());
+    await new Promise((ok, fail) => im.display(data, (d) => d ? ok() : fail(new Error(`${file.name} can't be read.`))));
+    return pixelsToBlob(data, 'image/jpeg');
+  } finally { for (const i of images) i.free?.(); }
+}
+async function tiffToBlob(file) {
+  const UTIF = await utif(), buf = await file.arrayBuffer(), page = UTIF.decode(buf)[0];   // the first page is the picture; later ones are usually thumbnails
+  if (!page) return null;
+  UTIF.decodeImage(buf, page);
+  const rgba = UTIF.toRGBA8(page);
+  return pixelsToBlob(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.length), page.width, page.height), 'image/png');   // PNG keeps transparency
+}
+/** Opens a picture file as an image element, converting HEIC and TIFF; null when it isn't a picture the program can read. */
+export async function openImage(file) {
+  const f = photoFormat(file) || (/hei[cf]/i.test(file.type) ? 'heic' : /tiff/i.test(file.type) ? 'tiff' : null);
+  if (!f && !/^image\//.test(file.type)) return null;
+  let blob;
+  try { blob = f === 'heic' ? await heicToBlob(file) : f === 'tiff' ? await tiffToBlob(file) : file; }
+  catch (e) { if (/could not (be loaded|start)/.test(e.message)) throw e; return null; }   // a damaged file reads as "can't be opened"
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob);
+  try { return await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = url; }); }
+  finally { URL.revokeObjectURL(url); }
+}
+
+/** A picture chosen for a template (background or logo) in a form the service keeps (PNG, JPG or WebP), at most
+ *  maxSide pixels: any picture the program reads works, such as HEIC, TIFF, GIF, BMP or SVG, and transparency is kept. */
+export async function templateImage(file, maxSide = 2400) {
+  const img = await openImage(file);
+  if (!img) throw new Error(`${file.name} can't be opened. Choose a picture such as a JPG, PNG or HEIC.`);
+  const iw = img.naturalWidth || 1200, ih = img.naturalHeight || 1200;   // an SVG without a size
+  const k = Math.min(1, maxSide / Math.max(iw, ih));
+  if (k === 1 && img.naturalWidth && ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return { blob: file, type: file.type, w: iw, h: ih };
+  const c = document.createElement('canvas'); c.width = Math.round(iw * k); c.height = Math.round(ih * k);
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, c.width, c.height);
+  const type = ['jpg', 'heic'].includes(photoFormat(file)) ? 'image/jpeg' : 'image/png';
+  return { blob: await new Promise(r => c.toBlob(r, type, 0.92)), type, w: c.width, h: c.height };
 }
 export function loadImage(src) {
   if (!src) return Promise.resolve(null);

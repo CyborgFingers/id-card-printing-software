@@ -273,6 +273,18 @@ input[type=range] { accent-color: var(--brand); width: 100%; }
 .step .st { font-size: 12.5px; font-weight: 700; color: var(--ok); }
 .step .st.warn { color: var(--amber-ink); }
 .code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; background: var(--brand-tint-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--brand-deep); overflow-x: auto; white-space: nowrap; }
+.steps.two { grid-template-columns: 1fr 1fr; }   /* bulk update: CSV and photos */
+/* Photo types to match (import and bulk update): one tick box per type, with how many were found; a type with none is dimmed */
+.types { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.types label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.types label.dim { opacity: .5; }
+.types input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
+.types .num { font-weight: 600; color: var(--muted); }
+.tbl .thumb.ty { font-size: 9.5px; letter-spacing: .02em; }   /* HEIC / TIFF until the row scrolls into view */
+.unused { padding: 12px 20px; border-top: 1px solid var(--line-2); font-size: 12.5px; color: var(--muted); }   /* bulk update: photos that matched nobody */
+.unused summary { cursor: pointer; font-weight: 700; color: var(--amber-ink); }
+.unused div { margin-top: 8px; word-break: break-word; }
+.top .actions .vr { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line); }   /* groups the People toolbar */
 
 .tbl-wrap { overflow-x: auto; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -381,7 +393,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 @media (max-width: 1100px) {
   .single, .editor { grid-template-columns: 1fr; }
-  .steps { grid-template-columns: 1fr; }
+  .steps, .steps.two { grid-template-columns: 1fr; }
   .designs { grid-template-columns: 1fr; }
   .settings { grid-template-columns: 1fr; }
 }
@@ -390,6 +402,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .app { grid-template-columns: 1fr; }
   .side { display: none; }
   .top, .page, .foot, .now, .banner { padding-left: 16px; padding-right: 16px; }
+  .top .actions .vr { display: none; }   /* the toolbar wraps here */
   .grid2, .grid3, .grid4, .kpis { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

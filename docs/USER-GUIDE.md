@@ -96,13 +96,11 @@ Then choose **Portrait** or **Landscape** under **Card orientation**. Your print
 
 ### Add a background
 
-1. Under **Front background**, choose **Choose image** and pick a picture: PNG, JPG, WebP, GIF, BMP or SVG.
+1. Under **Front background**, choose **Choose image** and pick a picture: JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP, GIF or SVG.
 2. Or pick a **Background colour** instead.
 3. Choose **Save template** to keep it.
 
 The picture fills the whole card. If it's a different shape from the card, its edges are trimmed rather than squashed, so for the best result make it the card's shape, for example 638 × 1013 pixels for a portrait CR80 card.
-
-> **Note:** iPhone photos saved as HEIC can't be opened. Save them as JPG first.
 
 To fade the background picture, for example behind text, drag **Image opacity** below it. To make it darker or richer, drag **Darkness** (which darkens the whole picture, white areas too), **Contrast** and **Colour**. Logos and the ID photo frame have the same three settings when selected; on the photo frame they apply to every person's photo.
 
@@ -217,7 +215,7 @@ People are the card holders in a client. Open a client to see their **People** t
 
 1. Open the client and choose **Add person**.
 2. Type their first and last name, and any other details the card shows.
-3. Drop their ID photo onto the photo box, or click it to choose a photo. The box shows the photo size the template needs.
+3. Drop their ID photo onto the photo box, or click it to choose a photo. The box shows the photo size the template needs. The photo can be JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP or GIF; the program converts it as needed.
 4. Choose **Save**, or **Save and print** to print their card straight away.
 
 The card preview on the right shows the card as it will print.
@@ -280,7 +278,7 @@ Name each photo after the person: their first name, then their last name. Capita
 | `John_Smith.jpg`, `john-smith.jpg`, `Smith John.jpg` |
 
 - Macrons and accents don't matter either, so `Mere Tuhoe.jpg` matches Mere Tūhoe.
-- Photos can be JPG, PNG, WebP, BMP or GIF, of any size or shape. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), and you can adjust any of them afterwards.
+- Photos can be JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP or GIF, of any size or shape, and can be mixed. The program converts them as needed. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), and you can adjust any of them afterwards.
 - The photo size the template needs is shown under **Add the ID photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Photos of that shape fill the frame without being trimmed.
 - Only the file name matters. Nothing needs to be written on the photo.
 
@@ -289,7 +287,7 @@ The CSV doesn't need a photo column: each person's photo is found by their name.
 ### 3. Upload and review
 
 1. Choose **Upload CSV** and pick your CSV file.
-2. Choose **Choose folder** and pick the folder with the photos, or **Choose files** to pick them one by one.
+2. Choose **Choose folder** and pick the folder with the photos, or **Choose files** to pick them one by one. Every type of photo is ticked to start with, and the number of each type found is shown beside it: untick a type to leave those files out.
 3. Check the list. Each row shows the photo it matched and its status:
 
 | Status | Meaning |
@@ -305,6 +303,31 @@ The CSV doesn't need a photo column: each person's photo is found by their name.
 5. The program offers to print the new people's cards straight away.
 
 > **Note:** Importing the same CSV again skips everyone already added, so you can fix a few rows and import again.
+
+## Updating people in bulk
+
+Change details or add photos for many people already in a client at once, for example importing 1,000 people now and their photos later. A bulk update only changes people who are already there: it never adds or deletes anyone.
+
+1. Open the client and choose **Bulk update**.
+2. To change details, under **Upload a CSV of changes** choose **Upload CSV** and pick a CSV with **First Name**, **Last Name** and a column for each detail to change. The easiest way is to choose **Export people**, change the cells you want in Excel, and save it as CSV.
+3. To add or replace photos, under **Add the ID photos** choose **Choose folder** or **Choose files**. They're matched by name exactly as when [importing](#importing-people-from-a-spreadsheet): `John Smith.heic` goes to John Smith. Untick any type of photo to leave it out.
+4. Check the list. It shows each person who will change, what changes (such as *Position: Driver → Supervisor*, *Adds photo* or *Replaces photo*) and the new photo:
+
+| Status | Meaning |
+|---|---|
+| Ready | Will be updated |
+| No changes | The CSV row is the same as the person's details already, and there's no new photo |
+| Not found | Nobody in the client has that name; the row is left out |
+| Same name twice: skipped | Two people in the client have that name, so the program can't tell whose row or photo it is. Update them by editing them |
+| In the CSV twice: skipped | The CSV has two rows for the same person, so neither is used |
+
+5. Untick anyone you don't want, then choose **Update** (the button shows how many people).
+
+You can use either step on its own: just photos, or just a CSV.
+
+- A blank cell leaves that detail as it is. Names are never changed: they're how people are found.
+- A new photo replaces the person's old one, and its position on the card goes back to the template's fit.
+- Photos that matched nobody are listed under the table (*3 photos matched nobody*), so you can check their names.
 
 ## Printing cards
 
