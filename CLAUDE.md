@@ -122,13 +122,12 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, gen-help
   setLineUpFaces, one switch for all templates; a template's fit stays Fill the frame / Whole photo). Line up faces only
   positions the photo (adj.face: the point between the eyes and the face's size); it never changes it. A photo too
   tight to reach the spot grows up to FACE.grow, then leaves up to FACE.slack uncovered, filled with a blurred wash of
-  its edge rows/columns (never mirrored: mirroring copied faces). Tested end to end with 300 synthetic faces
-  (scratch harness, not in the repo): about 90% within 15 px of the eye target; misses are side profiles.
+  its edge rows/columns (never mirrored: mirroring copied faces).
 - **Photo problems are reported, never hidden.** render.js photoIssues (noPhoto, noFace, turned, close, small, poor)
   drives the list labels, Show → Needs checking, and the end-of-run report (runReport in app.js) after an import,
   bulk update or Line up faces. They come from what's saved with each photo (adj.face incl. `turned`, adj.photo
   {w, h, poor}); photos saved before 3.0.15 are only checked for noPhoto. face.js `turned` = eyes < 0.75 of front on
-  or nose > 0.6 of the eye spacing to one side, calibrated on 293 faces: no front-on face flagged.
+  or nose > 0.6 of the eye spacing to one side, set so no front-on face is flagged.
 
 - **No plain files.** All data and settings live in the one encrypted DB file
   (`C:\ProgramData\ID Card Printing Software\id-card-printing-software.db` on Windows), shared by every

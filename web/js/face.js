@@ -11,8 +11,8 @@ const load = () => detector ??= import(vendor + 'vision_bundle.mjs')
   .catch((e) => { detector = null; throw new Error(`The face finder could not start (${e.message || e}). Close the program and open it again.`); });
 const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const biggest = (faces) => faces.filter(f => f.keypoints?.length >= 4).reduce((big, f) => !big || f.boundingBox.width * f.boundingBox.height > big.boundingBox.width * big.boundingBox.height ? f : big, null);
-// Front on, the eyes are about 0.9 times as far apart as the point between them is from the mouth (measured on 292
-// varied faces). A turned head brings the eyes closer, a tipped one the mouth, so the larger of the two is the face's size.
+// Front on, the eyes are about 0.9 times as far apart as the point between them is from the mouth. A turned head brings
+// the eyes closer, a tipped one the mouth, so the larger of the two is the face's size.
 const EYES_TO_MOUTH = 0.9;
 
 // One look at a picture (w x h): its biggest face, confirmed by looking again at a square around it, which the face then
@@ -32,8 +32,8 @@ function look(det, pic, w, h) {
 /** A face from the finder's points (in the photo's pixels, w x h): { x, y, d }, the point between the eyes as parts of
  *  the photo's width and height, and the face's size as a part of its width (how far apart the eyes are, front on).
  *  `turned` when it isn't front on: the eyes less than 0.75 as far apart as front on, or the nose off to one side by
- *  more than 0.6 of the eyes' spacing (set on 293 varied faces: it catches the turned ones that can't be lined up,
- *  and a few three-quarter views that could, but no front-on face). */
+ *  more than 0.6 of the eyes' spacing (set so it catches the turned ones that can't be lined up, and a few
+ *  three-quarter views that could, but no front-on face). */
 export function faceFromPoints(k, w, h) {
   const [r, l, nose, mouth] = k, ex = (r.x + l.x) / 2, ey = (r.y + l.y) / 2;   // eyes, nose, mouth
   const eyes = Math.hypot(r.x - l.x, r.y - l.y), front = EYES_TO_MOUTH * Math.hypot(mouth.x - ex, mouth.y - ey);
