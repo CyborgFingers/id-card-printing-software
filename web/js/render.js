@@ -137,7 +137,7 @@ export const FIELDS = {
   staffId: { label: 'Staff ID number', kind: 'text', sample: 'ID-1042', size: 34 },
   position: { label: 'Position', kind: 'text', sample: 'Team Member', size: 34 },
   title: { label: 'Title', kind: 'text', sample: 'Mr', size: 34 },
-  address: { label: 'Address', kind: 'multiline', sample: '12 Example Street\nThorndon, Wellington 6011', size: 28 },
+  address: { label: 'Address', kind: 'multiline', sample: '12 Example Street\nExample Town 1234', size: 28 },
   text: { label: 'Text', kind: 'text', sample: 'STAFF', size: 40 },
   image: { label: 'Logo or image', kind: 'image' },
   box: { label: 'Shape', kind: 'box' },

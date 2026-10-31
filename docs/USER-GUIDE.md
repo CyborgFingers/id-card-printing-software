@@ -319,7 +319,7 @@ Name each photo after the person: their first name, then their last name, next t
 - If one photo is named just the name (`John Smith.jpg`) and another has other words too (`John Smith old.jpg`), the one named just the name is used.
 - If two photos both have other words (`John Smith good.jpg` and `John Smith bad.jpg`), neither is used, because the program can't tell which one you want. Remove the one you don't want from the folder.
 
-- Macrons and accents don't matter either, so `Mere Tuhoe.jpg` matches Mere Tūhoe.
+- Macrons and accents don't matter either, so `Jane Doe.jpg` matches Jāne Dōe.
 - Photos can be JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP or GIF, of any size or shape, and can be mixed. The program converts them as needed. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), or [lined up by the face](#people) when that's on in **Settings**, and you can adjust any of them afterwards.
 - The photo size the template needs is shown under **Add the ID photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Photos of that shape fill the frame without being trimmed.
 - Only the file name matters. Nothing needs to be written on the photo.

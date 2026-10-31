@@ -13,31 +13,31 @@ test('CSV: NZ day-first dates and custom columns', () => {
   assert.equal(isoDate('2027-03-31'), '2027-03-31');
   assert.equal(isoDate('next year'), 'next year');
   const custom = [{ key: 'cf_exp', label: 'Expiry date', type: 'date' }, { key: 'cf_dep', label: 'Department', type: 'text' }];
-  const { people } = readPeople('First Name,Last Name,Expiry Date,Department\nMere,Tūhoe,31/03/2028,Kaitiaki\n', custom);
-  assert.equal(people[0].cf_exp, '2028-03-31'); assert.equal(people[0].cf_dep, 'Kaitiaki'); assert.equal(people[0].lastName, 'Tūhoe');
+  const { people } = readPeople('First Name,Last Name,Expiry Date,Department\nJane,Dōe,31/03/2028,Operations\n', custom);
+  assert.equal(people[0].cf_exp, '2028-03-31'); assert.equal(people[0].cf_dep, 'Operations'); assert.equal(people[0].lastName, 'Dōe');
   assert.deepEqual(parseCSV('a,b\n12" Pipe Rd,x\n'), [['a', 'b'], ['12" Pipe Rd', 'x']]);
 });
 
 test('CSV: a people export imports straight back', () => {
   const exported = '\ufeffFirst Name,Last Name,Staff ID Number,Position,Title,Address,Card Status,Notes,ID Photo,Times Printed,Last Printed\r\n'
-    + "Lena,'=SUM(1+1),KH-006,Volunteer,Ms,,Active,,,0,\r\n"
-    + 'Aroha,Ngata,KH-003,"Manager, Ward 4",Ms,,Active,,aroha.jpg,0,\r\n'
-    + 'Mere,Tūhoe,KH-001,Kaiāwhina,Ms,"12 Example Street, Thorndon",Active,,mere.jpg,0,\r\n';
+    + "Alex,'=SUM(1+1),KH-006,Volunteer,Ms,,Active,,,0,\r\n"
+    + 'John,Smith,KH-003,"Manager, Ward 4",Mr,,Active,,john.jpg,0,\r\n'
+    + 'Jane,Dōe,KH-001,Support Worker,Ms,"12 Example Street, Example Town",Active,,jane.jpg,0,\r\n';
   const { people, warning } = readPeople(exported);
   assert.equal(warning, '');
   assert.deepEqual(people.map(p => [p.firstName, p.lastName, p.staffId, p.position, p.address, p.photoFile]), [
-    ['Lena', '=SUM(1+1)', 'KH-006', 'Volunteer', '', ''],
-    ['Aroha', 'Ngata', 'KH-003', 'Manager, Ward 4', '', 'aroha.jpg'],
-    ['Mere', 'Tūhoe', 'KH-001', 'Kaiāwhina', '12 Example Street, Thorndon', 'mere.jpg']]);
+    ['Alex', '=SUM(1+1)', 'KH-006', 'Volunteer', '', ''],
+    ['John', 'Smith', 'KH-003', 'Manager, Ward 4', '', 'john.jpg'],
+    ['Jane', 'Dōe', 'KH-001', 'Support Worker', '12 Example Street, Example Town', 'jane.jpg']]);
 });
 
 test('ID photos match by file name, path or missing extension', () => {
-  const files = ['mere.jpg', 'sam-lee.png', 'aroha.jpg', 'ben_smith.jpg'].map(name => ({ name }));
+  const files = ['jane.jpg', 'sam-sample.png', 'john.jpg', 'john_smith.jpg'].map(name => ({ name }));
   const idx = buildPhotoIndex(files);
-  const m = (photoFile) => matchPhoto(idx, { photoFile, firstName: 'Ben', lastName: 'Smith' })?.name || null;
-  assert.equal(m('mere.jpg'), 'mere.jpg');
-  assert.equal(m('C:\\Photos\\SAM-LEE.PNG'), 'sam-lee.png');
-  assert.equal(m('aroha'), 'aroha.jpg');
+  const m = (photoFile) => matchPhoto(idx, { photoFile, firstName: 'John', lastName: 'Smith' })?.name || null;
+  assert.equal(m('jane.jpg'), 'jane.jpg');
+  assert.equal(m('C:\\Photos\\SAM-SAMPLE.PNG'), 'sam-sample.png');
+  assert.equal(m('john'), 'john.jpg');
   assert.equal(m('missing.jpg'), null);   // a named file that isn't there never falls back to a name match
   assert.equal(m(''), null);              // no file named: photosByName matches by name
 });
@@ -49,12 +49,12 @@ test('ID photos match the person\'s full name in any case, with or without space
   const john = { firstName: 'John', lastName: 'Smith', photoFile: '' };
   for (const name of ['John Smith.jpg', 'JOHN SMITH.JPG', 'john smith.png', 'johnsmith.jpg', 'JOHNSMITH.jpeg', 'JohnSmith.webp', 'john_smith.jpg', 'Smith, John.jpg'])
     assert.equal(named([name], [john])(john), name, name);
-  const mere = { firstName: 'Mere', lastName: 'Tūhoe' }, dow = { firstName: 'Jane', lastName: 'Dow' }, none = { firstName: '', lastName: '' };
-  const m = named(['Mere Tuhoe.jpg', '7.jpg', 'Jane Doe.png', 'jo.jpg'], [mere, dow, none]);
-  assert.equal(m(mere), 'Mere Tuhoe.jpg');   // macrons don't matter
-  assert.equal(m(dow), null);                // a different name never matches
+  const jane = { firstName: 'Jāne', lastName: 'Dōe' }, does = { firstName: 'Jane', lastName: 'Does' }, none = { firstName: '', lastName: '' };
+  const m = named(['7.jpg', 'Jane Doe.png', 'jo.jpg'], [jane, does, none]);
+  assert.equal(m(jane), 'Jane Doe.png');     // macrons don't matter
+  assert.equal(m(does), null);                // a different name never matches
   assert.equal(m(none), null);
-  assert.equal(nameKey('  Ana-María  O\'Neil '), 'anamariaoneil');
+  assert.equal(nameKey('  Jane-Marié  O\'Doe '), 'janemarieodoe');
 });
 
 test('ID photos match a first and last name next to each other among other words', () => {
@@ -69,8 +69,8 @@ test('ID photos match a first and last name next to each other among other words
   assert.equal(m(mary), 'Mary Jane Doe.jpg'); assert.equal(m(jane), null);
   const both = named(['Jane Doe and John Smith.jpg'], [jane, john]);                                // two names in one photo name
   assert.equal(both(jane), 'shared'); assert.equal(both(john), 'shared');
-  const sam = { firstName: 'Sam', lastName: 'Lee' }, sam2 = { ...sam };
-  assert.equal(named(['Sam Lee ID.jpg'], [sam, sam2])(sam2), 'shared');                             // two people with the same name
+  const sam = { firstName: 'Sam', lastName: 'Sample' }, sam2 = { ...sam };
+  assert.equal(named(['Sam Sample ID.jpg'], [sam, sam2])(sam2), 'shared');                             // two people with the same name
 });
 
 test('Help topics are built from the current user guide', async () => {
@@ -92,7 +92,7 @@ test('text always fits its box: shrink, then wrap a long name (also after a hyph
     assert.ok(r.top >= box.y && r.top + r.cap + (r.lines.length - 1) * r.lh + r.size * 0.2 <= box.y + box.h, `${value} leaves its box`);
     return [r.size, r.lines];
   };
-  assert.deepEqual(check('Ng'), [60, ['Ng']]);
+  assert.deepEqual(check('Jo'), [60, ['Jo']]);
   assert.deepEqual(check('Sampleton-Placeholderson'), [40, ['Sampleton-', 'Placeholderson']]);
   assert.deepEqual(check('Jane Sample-Placeholderson'), [40, ['Jane Sample-', 'Placeholderson']]);
   const [size, lines] = check('Supercalifragilisticexpialidocious');   // nowhere to break: smaller than the smallest size, but inside the box
@@ -286,23 +286,23 @@ test('bulk update: rows and photos change the people already there, by name, and
   const people = [
     { id: 1, firstName: 'Jane', lastName: 'Doe', position: 'Driver', extra: {} },
     { id: 2, firstName: 'John', lastName: 'Smith', position: '', extra: { cf_dep: 'Ops' } },
-    { id: 3, firstName: 'Sam', lastName: 'Lee', extra: {} }, { id: 4, firstName: 'Sam', lastName: 'Lee', extra: {} },
-    { id: 5, firstName: 'Mere', lastName: 'Tūhoe', extra: {} },
+    { id: 3, firstName: 'Sam', lastName: 'Sample', extra: {} }, { id: 4, firstName: 'Sam', lastName: 'Sample', extra: {} },
+    { id: 5, firstName: 'Jane', lastName: 'Smith', extra: {} },
   ];
   const value = (p, k) => k.startsWith('cf_') ? p.extra[k] : p[k];
   const fields = ['staffId', 'position', 'cf_dep'];
-  const files = ['jane doe.heic', 'SAM_LEE.jpg', 'Mere Tuhoe ID photo.tif', 'Nobody Here.png'].map(name => ({ name }));
+  const files = ['jane doe.heic', 'SAM_SAMPLE.jpg', 'Jane Smith ID photo.tif', 'Nobody Here.png'].map(name => ({ name }));
   const rows = [
     { firstName: 'JANE', lastName: 'doe', position: 'Supervisor', staffId: '', cf_dep: '' },   // blank cells stay as they are
     { firstName: 'John', lastName: 'Smith', position: '', staffId: '', cf_dep: 'Ops' },        // nothing different
-    { firstName: 'Ana', lastName: 'Ngata', position: 'Clerk' },                                  // not in this client
+    { firstName: 'Alex', lastName: 'Example', position: 'Clerk' },                                // not in this client
   ];
   const { entries, unusedFiles } = planUpdate(people, rows, files, fields, value);
   const by = (id) => entries.filter(e => e.person?.id === id);
   assert.deepEqual(by(1)[0].changes, { position: 'Supervisor' }); assert.equal(by(1)[0].file.name, 'jane doe.heic'); assert.equal(by(1)[0].problem, null);
   assert.equal(by(2)[0].problem, 'noChange');
-  assert.deepEqual(by(3).concat(by(4)).map(e => e.problem), ['sameName', 'sameName']);   // two Sam Lees: whose photo is it?
-  assert.equal(by(5)[0].file.name, 'Mere Tuhoe ID photo.tif');
+  assert.deepEqual(by(3).concat(by(4)).map(e => e.problem), ['sameName', 'sameName']);   // two Sam Samples: whose photo is it?
+  assert.equal(by(5)[0].file.name, 'Jane Smith ID photo.tif');
   assert.equal(entries.find(e => !e.person).problem, 'notFound');
   assert.deepEqual(unusedFiles.map(f => f.name), ['Nobody Here.png']);
   // Photos only, no CSV: the same matches.
@@ -312,10 +312,10 @@ test('bulk update: rows and photos change the people already there, by name, and
   const twice = planUpdate(people, [rows[0], { ...rows[0], position: 'Manager' }], [], fields, value);
   assert.deepEqual(twice.entries.map(e => e.problem), ['twice', 'twice']);
   // Two photos for one person: the CSV's changes still apply, the photo is left as it is.
-  const two = planUpdate(people, [rows[0]], ['Jane Doe Good.jpg', 'Jane Doe Bad.jpg', 'Mere Tuhoe new.jpg', 'Mere Tuhoe old.jpg'].map(name => ({ name })), fields, value);
-  const [jane, mere] = [1, 5].map(id => two.entries.find(e => e.person?.id === id));
+  const two = planUpdate(people, [rows[0]], ['Jane Doe Good.jpg', 'Jane Doe Bad.jpg', 'Jane Smith new.jpg', 'Jane Smith old.jpg'].map(name => ({ name })), fields, value);
+  const [jane, smith] = [1, 5].map(id => two.entries.find(e => e.person?.id === id));
   assert.equal(jane.problem, null); assert.equal(jane.file, null); assert.equal(jane.photoProblem, 'several'); assert.deepEqual(jane.changes, { position: 'Supervisor' });
-  assert.equal(mere.problem, 'several'); assert.deepEqual(mere.files.map(f => f.name), ['Mere Tuhoe new.jpg', 'Mere Tuhoe old.jpg']);
+  assert.equal(smith.problem, 'several'); assert.deepEqual(smith.files.map(f => f.name), ['Jane Smith new.jpg', 'Jane Smith old.jpg']);
   assert.deepEqual(two.unusedFiles, []);   // shown against the person, not as matching nobody
 });
 

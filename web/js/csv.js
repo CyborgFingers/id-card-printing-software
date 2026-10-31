@@ -69,7 +69,7 @@ export function readPeople(text, custom = []) {
 }
 
 // A name as a photo name: letters and numbers only, any case, macrons and accents dropped
-// ("John Smith", "JOHN_SMITH" and "johnsmith" are the same; "Tūhoe" matches "Tuhoe").
+// ("John Smith", "JOHN_SMITH" and "johnsmith" are the same; "Dōe" matches "Doe").
 export const nameKey = (s) => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 // Matches a CSV photo reference (file name or full path) against the chosen photo files.

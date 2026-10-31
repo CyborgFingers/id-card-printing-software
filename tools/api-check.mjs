@@ -38,12 +38,12 @@ const refused = (p, status) => assert.rejects(p, e => e.status === status);
 
   const tpl = (await admin.call('GET', '/api/state')).designs[0] || await admin.call('POST', '/api/designs', { name: 'API check card' });
   const c = await admin.call('POST', '/api/clients', { name: `API check ${Date.now()}`, templateId: tpl.id, copyTemplate: true });
-  const p1 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Ana', lastName: '=Tūhoe', extra: { [exp.key]: '2027-03-31' } });
-  const p2 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Ben', lastName: 'Ngata', extra: { [num.key]: 'TYPED-1' } });
+  const p1 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Jane', lastName: '=Dōe', extra: { [exp.key]: '2027-03-31' } });
+  const p2 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'John', lastName: 'Smith', extra: { [num.key]: 'TYPED-1' } });
   assert.equal(p1.extra[exp.key], '2027-03-31');
   assert.equal(p1.extra[num.key], 'C00041'); assert.equal(p2.extra[num.key], 'TYPED-1');
   await refused(admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Bad', extra: { [exp.key]: '31/03/2027' } }), 400);
-  const p3 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Cam' });
+  const p3 = await admin.call('POST', `/api/clients/${c.id}/people`, { firstName: 'Alex' });
   assert.equal(p3.extra[num.key], 'C00042');
   step('custom values saved, card numbers assigned in order, bad dates refused');
 
@@ -54,7 +54,7 @@ const refused = (p, status) => assert.rejects(p, e => e.status === status);
   assert.equal(defs.find(f => f.key === start.key).expiry, true); assert.equal(defs.find(f => f.key === exp.key).expiry, false);
   await admin.call('PUT', `/api/fields/${exp.key}`, { label: exp.label, expiry: true });
   const num2 = await admin.call('POST', '/api/fields', { label: `Badge ${Date.now()}`, type: 'auto', digits: 3, next: 7 });
-  const edited = await admin.call('PUT', `/api/people/${p2.id}`, { firstName: 'Ben' });
+  const edited = await admin.call('PUT', `/api/people/${p2.id}`, { firstName: 'John' });
   assert.equal(edited.extra[num2.key], '007'); assert.equal(edited.extra[num.key], 'TYPED-1');
   await admin.call('DELETE', `/api/fields/${start.key}`); await admin.call('DELETE', `/api/fields/${num2.key}`);
   step('expiry flag follows the field just edited; editing a person fills a new card number');
@@ -69,7 +69,7 @@ const refused = (p, status) => assert.rejects(p, e => e.status === status);
 
   // People export: custom columns, formulas neutralised, macrons kept
   const csv = await (await admin.raw('GET', `/api/clients/${c.id}/people.csv`)).text();
-  assert.ok(csv.includes(exp.label) && csv.includes('C00041') && csv.includes("'=Tūhoe") && csv.includes('Lost or stolen'), csv);
+  assert.ok(csv.includes(exp.label) && csv.includes('C00041') && csv.includes("'=Dōe") && csv.includes('Lost or stolen'), csv);
   step('people CSV export');
 
   // Templates: landscape card with an image, a box, a barcode and rotated text
@@ -127,9 +127,9 @@ const refused = (p, status) => assert.rejects(p, e => e.status === status);
   await refused(admin.call('PUT', '/api/autobackup', { enabled: true, folder: 'relative/path', password: 'backup-pass-1' }), 400);
   await admin.call('PUT', '/api/autobackup', { enabled: true, folder: dir, every: 'daily', keep: 2, password: 'backup-pass-1' });
   for (let i = 0; i < 3; i++) { const r = await admin.call('POST', '/api/autobackup/run'); assert.equal(r.ok, true, r.error); await new Promise(r => setTimeout(r, 1100)); }
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.idcbak'));
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.bak'));
   assert.equal(files.length, 2, files.join());   // keep: 2
-  assert.ok(!fs.readFileSync(path.join(dir, files[0])).includes(Buffer.from('Ngata')), 'backup must be encrypted');
+  assert.ok(!fs.readFileSync(path.join(dir, files[0])).includes(Buffer.from('Smith')), 'backup must be encrypted');
   const ab = await admin.call('GET', '/api/autobackup');
   assert.equal(ab.hasPassword, true); assert.equal(ab.password, undefined);
   await admin.call('PUT', '/api/autobackup', { enabled: false, folder: dir, every: 'daily', keep: 2 });
