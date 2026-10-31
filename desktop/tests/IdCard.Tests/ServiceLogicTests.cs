@@ -90,6 +90,7 @@ public class ServiceLogicTests
             string[] keepers = ["ID-Card-Printing-Software-Backup-2025-12-01.idcbak", "ID-Card-Printing-Software-Auto-Backup-OTHERPC-2025-01-01-00-00-00.idcbak", "unrelated.txt"];
             foreach (var f in keepers) File.WriteAllText(Path.Combine(dir, f), "keep");
             var name = AutoBackup.Run(dir, 2, xfer, tmp => File.WriteAllText(tmp, "new"));
+            Assert.EndsWith(".bak", name);   // the .idcbak files made before 3.0.17 still count towards Keep the newest
             Assert.Equal(new[] { $"{AutoBackup.Prefix}2026-01-02-00-00-00.idcbak", name }.Concat(keepers).Order(), Directory.GetFiles(dir).Select(Path.GetFileName).Order());
             Assert.Empty(Directory.GetFiles(xfer));
             Assert.Throws<InvalidOperationException>(() => AutoBackup.CheckFolder("relative/path"));

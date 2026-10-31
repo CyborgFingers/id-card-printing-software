@@ -37,11 +37,11 @@ internal static class AutoBackup
     public static string Run(string folder, int keep, string xfer, Action<string> write)
     {
         CheckFolder(folder);
-        var name = $"{Prefix}{DateTime.UtcNow:yyyy-MM-dd-HH-mm-ss}.idcbak";
+        var name = $"{Prefix}{DateTime.UtcNow:yyyy-MM-dd-HH-mm-ss}.bak";
         var tmp = Path.Combine(xfer, $"auto-{Environment.ProcessId}.db");
         try { write(tmp); File.Copy(tmp, Path.Combine(folder, name), overwrite: true); }
         finally { Data.Db.DeleteWithJournals(tmp); }
-        var mine = new Regex($@"^{Regex.Escape(Prefix)}\d{{4}}(-\d\d){{5}}\.idcbak$");
+        var mine = new Regex($@"^{Regex.Escape(Prefix)}\d{{4}}(-\d\d){{5}}\.(bak|idcbak)$");   // .idcbak: made before 3.0.17
         var old = Directory.GetFiles(folder).Select(Path.GetFileName).Where(f => f is not null && mine.IsMatch(f)).Order(StringComparer.Ordinal).ToList();
         foreach (var f in old.Take(Math.Max(0, old.Count - keep))) { try { File.Delete(Path.Combine(folder, f!)); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
         return name;

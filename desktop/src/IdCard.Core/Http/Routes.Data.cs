@@ -98,14 +98,14 @@ internal sealed partial class Routes
         router.Add("POST", "/api/backup", r =>
         {
             var pw = Js.ToStr(r.Json["password"]);
-            if (pw.Length < 8) return Bad("Use a backup password of at least 8 characters.");
+            if (pw.Length is > 0 and < 8) return Bad("Use a backup password of at least 8 characters.");   // or none
             var tmp = Path.Combine(app.Xfer, $"backup-{Js.Uid(8)}.db");
             try
             {
                 Db.ExportBackup(tmp, app.DbFile, app.DbKey, pw, AppService.AppId);
                 var buf = File.ReadAllBytes(tmp);
-                Log($"Backup downloaded by {r.User.Username}");
-                return Reply.Bytes(buf, "application/octet-stream", new() { ["Content-Disposition"] = $"attachment; filename=\"ID-Card-Printing-Software-Backup-{DateTime.UtcNow:yyyy-MM-dd}.idcbak\"" });
+                Log($"Backup downloaded by {r.User.Username}{(pw.Length == 0 ? " (no password)" : "")}");
+                return Reply.Bytes(buf, "application/octet-stream", new() { ["Content-Disposition"] = $"attachment; filename=\"ID-Card-Printing-Software-Backup-{DateTime.UtcNow:yyyy-MM-dd}.bak\"" });
             }
             finally { Db.DeleteWithJournals(tmp); }
         }, limit: 10000);
@@ -143,7 +143,6 @@ internal sealed partial class Routes
         {
             string pw;
             try { pw = Encoding.UTF8.GetString(Convert.FromBase64String(r.Header("X-Backup-Password") ?? "")); } catch (FormatException) { pw = ""; }
-            if (pw.Length == 0) return Bad("Enter the backup password.");
             var tmp = Path.Combine(app.Xfer, $"restore-{Js.Uid(8)}.db");
             try
             {

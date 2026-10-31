@@ -133,9 +133,11 @@ tools/                          build-installer.sh/.ps1, gen-legal.mjs, gen-help
 - **No plain files.** All data and settings live in the one encrypted DB file
   (`C:\ProgramData\ID Card Printing Software\id-card-printing-software.db` on Windows), shared by every
   Windows account on the PC (setup's [Dirs] grants Users modify). Card images go from the database to the
-  printer driver in memory. Backups are encrypted with a user-chosen backup password (`.idcbak`); the
+  printer driver in memory. Backups (`.bak`; `.idcbak` before 3.0.17, still restored) are encrypted with a user-chosen
+  backup password, or with Db.NoPasswordKey (not a secret) when the person chooses none; automatic backups always need one; the
   `transfer/` folder only ever holds those briefly. Each account's own `%LOCALAPPDATA%\ID Card Printing
-  Software` keeps only its WebView2 data and update downloads (never the shared folder: the setup runs
+  Software` keeps only its WebView2 data and update downloads (as SYSTEM, whose folder is inside System32, updates go to
+  its temp folder instead: the 32-bit setup can't see System32; never the shared folder: the setup runs
   elevated from there) and `transfer/` (a junction there could aim its clean-up anywhere). Up to 3.0.11
   (and in 2.x) the DB lived there, one per account; MoveData brings it into the shared folder once
   (re-encrypted with the shared key via ExportBackup): automatically when there's no shared DB or it's

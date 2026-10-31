@@ -1516,38 +1516,40 @@ ${accountCard(c, true)}
 };
 
 // ======================================================================
-// Backup and restore (password-protected)
+// Backup and restore (a .bak file, with or without a backup password)
 // ======================================================================
 function backupModal() {
   modal({ title: 'Download a backup', text: 'You will need this password to restore the backup.',
-    body: `<div class="stack"><label class="f">Backup password<input class="input" type="password" id="bkPw" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm backup password<input class="input" type="password" id="bkPw2" autocomplete="new-password"></label></div>`,
+    body: `<div class="stack"><label class="check bare"><input type="checkbox" id="bkUse" checked><div><b>Protect the backup with a password</b></div></label>
+      <div class="stack" id="bkPws"><label class="f">Backup password<input class="input" type="password" id="bkPw" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm backup password<input class="input" type="password" id="bkPw2" autocomplete="new-password"></label></div></div>`,
     actions: [{ label: 'Cancel' }, { label: 'Download backup', kind: 'primary', onClick: async (m) => {
-      const pw = $('#bkPw', m).value;
-      if (pw.length < 8) { toast('Use at least 8 characters', 'err'); return false; }
-      if (pw !== $('#bkPw2', m).value) { toast('The passwords don\'t match', 'err'); return false; }
+      const use = $('#bkUse', m).checked, pw = use ? $('#bkPw', m).value : '';
+      if (use && pw.length < 8) { toast('Use at least 8 characters', 'err'); return false; }
+      if (use && pw !== $('#bkPw2', m).value) { toast('The passwords don\'t match', 'err'); return false; }
       const btn = $('.modal-f .btn.primary', m); btn.disabled = true; btn.textContent = 'Preparing…';
       try {
         const r = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
         if (r.status === 401) { showLogin(); return; }
         if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Backup failed'); }
         const blob = await r.blob();
-        const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'ID-Card-Printing-Software-Backup.idcbak';
+        const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'ID-Card-Printing-Software-Backup.bak';
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
         toast('Backup downloaded', 'ok');
       } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = 'Download backup'; return false; }
-    } }] });
+    } }],
+    // Without a password, anyone with the file can restore it, so the window says so instead.
+    onMount: (m) => { $('#bkUse', m).onchange = e => { $('#bkPws', m).hidden = !e.target.checked; $('.modal-h p', m).textContent = e.target.checked ? 'You will need this password to restore the backup.' : 'Anyone with the backup file can restore it.'; }; } });
 }
 function restoreModal() {
   modal({ title: 'Restore from a backup', text: 'Everything on this PC (settings, clients, people, templates, the print queue, history and sign-in details) is replaced with the backup. You will then sign in with the details from the backup.',
-    body: `<div class="stack"><label class="f">Backup file<input class="input" type="file" id="rsFile" accept=".idcbak,.db"></label><label class="f">Backup password<input class="input" type="password" id="rsPw" autocomplete="off"></label></div>`,
+    body: `<div class="stack"><label class="f">Backup file<input class="input" type="file" id="rsFile" accept=".bak,.idcbak,.db"></label><label class="f">Backup password, if it has one<input class="input" type="password" id="rsPw" autocomplete="off"></label></div>`,
     actions: [{ label: 'Cancel' }, { label: 'Replace with backup', kind: 'danger', onClick: async (m) => {
       const f = $('#rsFile', m).files[0]; const pw = $('#rsPw', m).value;
       if (!f) { toast('Choose the backup file', 'err'); return false; }
-      if (!pw) { toast('Enter the backup password', 'err'); return false; }
       const btn = $('.modal-f .btn.danger', m); btn.disabled = true; btn.textContent = 'Restoring…';
       try {
-        const r = await fetch('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Backup-Password': btoa(unescape(encodeURIComponent(pw))) }, body: f });
+        const r = await fetch('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', ...(pw && { 'X-Backup-Password': btoa(unescape(encodeURIComponent(pw))) }) }, body: f });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || 'Restore failed');
         S.user = null; if (es) es.close();

@@ -201,16 +201,21 @@ public sealed class Db : IDisposable
     }
 
     // ---------- backups: the whole database, encrypted with its own password ----------
+    // A backup made without a password uses this key instead. It isn't a secret (it's in the program), so such a backup
+    // isn't protected: it only keeps the file from being an ordinary database any program can open.
+    const string NoPasswordKey = "ID Card Printing Software backup";
+    static string BackupKey(string password) => password.Length > 0 ? password : NoPasswordKey;
+
     public static void DeleteWithJournals(string file)
     {
         foreach (var s in new[] { "", "-wal", "-shm", "-journal" }) { try { File.Delete(file + s); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
     }
 
-    /// <summary>Writes an encrypted backup protected by its own password (so it can be restored on another PC).</summary>
+    /// <summary>Writes an encrypted backup protected by its own password, or none (""), so it can be restored on another PC.</summary>
     public static void ExportBackup(string file, string mainFile, string mainKey, string password, string appName)
     {
         DeleteWithJournals(file);
-        using var b = new Db(Connect(file, password));
+        using var b = new Db(Connect(file, BackupKey(password)));
         b.Exec("PRAGMA foreign_keys = OFF");
         b.Exec("ATTACH DATABASE ? AS src KEY ?", mainFile, mainKey);
         try
@@ -229,10 +234,10 @@ public sealed class Db : IDisposable
     public static BackupInfo InspectBackup(string file, string password, string[] appNames)
     {
         if (!File.Exists(file)) throw new InvalidOperationException("The backup file is missing.");
-        using var b = new Db(Connect(file, password, readOnly: true));
+        using var b = new Db(Connect(file, BackupKey(password), readOnly: true));
         string? app;
         try { app = b.Scalar("SELECT value FROM meta WHERE key = 'app'") as string; }
-        catch (SqliteException) { throw new InvalidOperationException("Wrong backup password, or the file is not an ID Card Printing Software backup."); }
+        catch (SqliteException) { throw new InvalidOperationException(password.Length == 0 ? "This backup has a password: type it to restore the backup." : "Wrong backup password, or the file is not an ID Card Printing Software backup."); }
         if (app is null || !appNames.Contains(app)) throw new InvalidOperationException("That file is not an ID Card Printing Software backup.");
         long N(string t) { try { return b.Count($"SELECT COUNT(*) FROM {t}"); } catch (SqliteException) { return 0; } }
         return new BackupInfo(N("clients"), N("people"), N("print_history"), N("queue_items"));
@@ -244,7 +249,7 @@ public sealed class Db : IDisposable
         Exec("PRAGMA foreign_keys = OFF");
         try
         {
-            Exec("ATTACH DATABASE ? AS src KEY ?", file, password);
+            Exec("ATTACH DATABASE ? AS src KEY ?", file, BackupKey(password));
             try
             {
                 var app = Scalar("SELECT value FROM src.meta WHERE key = 'app'") as string;

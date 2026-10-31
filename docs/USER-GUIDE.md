@@ -685,15 +685,15 @@ Only a Windows administrator on the PC can do this.
 
 ## Backups and moving to a new PC
 
-Everything (people, photos, templates, settings and history) is in one encrypted database on this PC. A backup copies it into a file protected by a backup password.
+Everything (people, photos, templates, settings and history) is in one encrypted database on this PC. A backup copies all of it into one `.bak` file, which can be restored on any PC with this program.
 
 ### Make a backup
 
 1. In **Settings**, under **Backup**, choose **Download backup**.
-2. Choose a backup password (at least 8 characters) and type it again.
-3. Choose **Download backup** and keep the `.idcbak` file somewhere safe, such as a USB drive.
+2. Leave **Protect the backup with a password** ticked, then choose a backup password (at least 8 characters) and type it again. For a backup without a password, untick it.
+3. Choose **Download backup** and keep the `.bak` file somewhere safe, such as a USB drive.
 
-> **Note:** Keep the backup password safe. Without it, the backup can't be restored.
+> **Note:** Keep the backup password safe. Without it, the backup can't be restored or opened. A backup without a password can be restored by anyone who has the file, so keep it where only the right people can reach it.
 
 ### Automatic backups
 
@@ -707,8 +707,10 @@ Everything (people, photos, templates, settings and history) is in one encrypted
 ### Restore a backup
 
 1. In **Settings**, under **Backup**, choose **Restore from backup**.
-2. Choose the backup file and type its backup password.
+2. Choose the backup file. If it has a backup password, type it.
 3. Choose **Replace with backup**.
+
+Backups made before version 3.0.17 end in `.idcbak` and restore the same way.
 
 Everything on this PC is replaced with the backup, and you sign in with the usernames and passwords from the backup.
 

@@ -115,7 +115,7 @@ add their people (or import them from a spreadsheet with their photos) and print
   New accounts must choose their own password; too many wrong passwords pauses sign-in; idle sessions sign out.
 - **One encrypted database** holds everything, including photos and card images, shared by every Windows account on
   the PC. The key is tied to the PC, so a copied database file cannot be opened elsewhere.
-- **Encrypted backups** (`.idcbak`) protected by a backup password you choose: download one whenever you like, or turn
+- **Backups** in one `.bak` file, protected by a backup password if you choose one: download one whenever you like, or turn
   on automatic daily or weekly backups to a folder or network share and keep the newest few.
 - **Restore** from a backup on this PC or a new one.
 
