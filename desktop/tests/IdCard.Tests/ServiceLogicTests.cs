@@ -122,6 +122,16 @@ public class ServiceLogicTests
         Assert.False(AppService.ResumesAfterUpdate(true, true, 0, true, sameVersion: true)); // started again before the update installed
     }
 
+    [Fact]
+    public void Updates_download_outside_System32_when_the_program_runs_as_SYSTEM()
+    {
+        const string sys = @"C:\WINDOWS\system32", temp = @"C:\WINDOWS\SystemTemp\";
+        Assert.Equal(Path.Combine(temp, "ID Card Printing Software"), AppService.UpdatesFolder(@"C:\Windows\System32\config\systemprofile\AppData\Local\ID Card Printing Software", sys, temp));
+        Assert.Equal(@"C:\Users\Jane\AppData\Local\ID Card Printing Software", AppService.UpdatesFolder(@"C:\Users\Jane\AppData\Local\ID Card Printing Software", sys, temp));
+        Assert.Equal(@"C:\WINDOWS\system32x\data", AppService.UpdatesFolder(@"C:\WINDOWS\system32x\data", sys, temp));   // only inside System32 itself
+        Assert.Equal("/Users/jane/data", AppService.UpdatesFolder("/Users/jane/data", "", "/tmp/"));                   // not Windows: no System32
+    }
+
     static readonly StatusSettings Cfg = new("Card printer", false, 10, 10);
 
     [Fact]

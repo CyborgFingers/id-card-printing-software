@@ -30,10 +30,20 @@ public sealed partial class AppService
     static bool FromGitHub(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps
         && (u.Host == "github.com" || u.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase));
 
+    // Where updates are downloaded: this account's own folder, except when the program runs as the SYSTEM account, whose own
+    // folder is inside C:\Windows\System32. The setup is a 32-bit program and Windows shows those a different System32, so it
+    // couldn't open itself there and stopped without installing. SYSTEM's temporary folder isn't in System32.
+    string UpdatesDir => UpdatesFolder(OwnDir, Environment.SystemDirectory, Path.GetTempPath());
+
+    internal static string UpdatesFolder(string own, string system, string temp) =>
+        system.Length > 0 && own.StartsWith(system.TrimEnd('\\') + '\\', StringComparison.OrdinalIgnoreCase) ? Path.Combine(temp, "ID Card Printing Software") : own;
+
     void StartUpdateChecks()
     {
-        // Setup programs from earlier updates (one may still have been running when it was last cleaned).
-        foreach (var d in Directory.GetDirectories(OwnDir, "update-*")) { try { Directory.Delete(d, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+        // Setup programs from earlier updates (one may still have been running when it was last cleaned), including any a
+        // SYSTEM copy left in its own folder before UpdatesDir.
+        foreach (var d in new[] { OwnDir, UpdatesDir }.Distinct().Where(Directory.Exists).SelectMany(p => Directory.GetDirectories(p, "update-*")))
+            try { Directory.Delete(d, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         _update = new JsonObject { ["current"] = Version, ["available"] = false, ["latest"] = null, ["installing"] = false };
         if (_o.UpdateFeed is null) return;
         _timers.Add(new Timer(_ => Safe(() => CheckForUpdate(force: false).GetAwaiter().GetResult()), null, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1)));
@@ -106,8 +116,8 @@ public sealed partial class AppService
         });
         if (start.Error is not null) return start.Error;
         var setup = start.Setup!;
-        // A new folder each time, inside this account's own folder.
-        var dir = Path.Combine(OwnDir, "update-" + Js.Uid(12));
+        // A new folder each time, in this account's UpdatesDir.
+        var dir = Path.Combine(UpdatesDir, "update-" + Js.Uid(12));
         var file = Path.Combine(dir, setup.Name);
         string? error = null;
         try
