@@ -72,7 +72,7 @@ export function createBuilder(ctx) {
   }
   // An opacity slider (lo–100 %) for obj[k], stored as 0.05–1; the key is dropped again at 100 % (solid, the default).
   // Live while dragging, one undo step per drag.
-  const fade = (id, lbl, v, lo) => { const p = Math.round((v ?? 1) * 100); return `<label class="f"><span style="display:flex;justify-content:space-between">${lbl}<span class="num muted" id="${id}V">${p}%</span></span><input type="range" id="${id}" min="${lo}" max="100" value="${p}" aria-label="${lbl}"></label>`; };
+  const fade = (id, lbl, v, lo) => { const p = Math.round((v ?? 1) * 100); return `<label class="f"><span class="val">${lbl}<span class="num muted" id="${id}V">${p}%</span></span><input type="range" id="${id}" min="${lo}" max="100" value="${p}" aria-label="${lbl}"></label>`; };
   function bindFade(id, obj, k) {
     const inp = $(`#${id}`); if (!inp) return;
     inp.oninput = () => { begin(); const p = +inp.value; if (p >= 100) delete obj[k]; else obj[k] = p / 100; $(`#${id}V`).textContent = `${p}%`; render(); };
@@ -103,7 +103,7 @@ export function createBuilder(ctx) {
       <section class="bld-stage">
         <div class="bld-tools"><div class="seg" id="bSide" role="radiogroup" aria-label="Card side"></div><div class="row bld-align" id="bAlign"></div><span class="sp"></span>
           <button class="btn sm ghost" id="bUndo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICON.undo}</button><button class="btn sm ghost" id="bRedo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICON.redo}</button>
-          <label class="check" style="border:0;padding:0;align-items:center;gap:8px"><label class="switch"><input type="checkbox" id="bSamples" ${B.samples ? 'checked' : ''}><i></i></label><span>Sample text</span></label></div>
+          <label class="check bare"><label class="switch"><input type="checkbox" id="bSamples" ${B.samples ? 'checked' : ''}><i></i></label><span>Sample text</span></label></div>
         <div class="bld-wrap" id="bWrap"><div class="bld-card" id="bCard"><canvas id="bCv"></canvas><div class="bld-ovl" id="bOvl" tabindex="0" aria-label="Card layout. Arrow keys move the selected field."></div><i class="guide gv" hidden></i><i class="guide gh" hidden></i></div></div>
       </section>
       <aside class="card bld-panel" id="bRight"></aside></div>`;
@@ -158,7 +158,7 @@ export function createBuilder(ctx) {
   function assign() {
     const cur = new Set(S.clients.filter(c => (c.templateIds || []).includes(B.id)).map(c => c.id));
     modal({ title: 'Assign to clients',
-      body: S.clients.length ? `<div class="stack" style="gap:0">${S.clients.map(c => `<label class="check"><input type="checkbox" data-c="${c.id}" ${cur.has(c.id) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--brand)"><div><b>${esc(c.name)}</b><span>${plural((c.templateIds || []).length, 'template')}${c.defaultDesignId === B.id ? ' · this is their default' : ''}</span></div></label>`).join('')}</div>` : '<p class="hint">No clients yet.</p>',
+      body: S.clients.length ? `<div class="rows">${S.clients.map(c => `<label class="check"><input type="checkbox" data-c="${c.id}" ${cur.has(c.id) ? 'checked' : ''}><div><b>${esc(c.name)}</b><span>${plural((c.templateIds || []).length, 'template')}${c.defaultDesignId === B.id ? ' · this is their default' : ''}</span></div></label>`).join('')}</div>` : '<p class="hint">No clients yet.</p>',
       actions: [{ label: 'Cancel' }, ...(S.clients.length ? [{ label: 'Save', kind: 'primary', onClick: async (m) => {
         const ids = $$('[data-c]', m).filter(x => x.checked).map(x => x.dataset.c);
         try { await api('PUT', `/api/designs/${B.id}/clients`, { clientIds: ids }); await refreshLists(); toast('Assignments saved', 'ok'); paintBar(); paintRight(); }
@@ -194,9 +194,9 @@ export function createBuilder(ctx) {
         <div class="f"><span>Card orientation</span><div class="seg sm" id="bOrient">${[['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([k, l]) => `<button type="button" data-o="${k}" class="${(k === 'landscape') === landscape() ? 'on' : ''}">${l}</button>`).join('')}</div></div>
         <span class="hint num">${cardDims(B.draft.card)}</span></div>
       <div class="fieldset"><h3>${B.side === 'front' ? 'Front' : 'Back'} background</h3>
-        ${B.side === 'back' ? `<label class="check" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="bBackOn" ${B.draft.back.enabled ? 'checked' : ''}><i></i></label><div><b>Print a back</b></div></label>` : ''}
-        ${backOff ? '' : `<div class="tpl"><div class="tthumb" style="background-image:url('${assetUrl(side.background) || ''}');width:${Math.round(CARD.w * tk)}px;height:${Math.round(CARD.h * tk)}px"></div><div class="row" style="gap:6px"><button class="btn sm" id="bUp">${ICON.upload}${side.background ? 'Change' : 'Choose'} image</button>${side.background ? '<button class="btn sm ghost danger" id="bClr">Remove</button>' : ''}</div></div>
-        <label class="f" style="flex-direction:row;align-items:center;gap:10px">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>
+        ${B.side === 'back' ? `<label class="check bare"><label class="switch"><input type="checkbox" id="bBackOn" ${B.draft.back.enabled ? 'checked' : ''}><i></i></label><div><b>Print a back</b></div></label>` : ''}
+        ${backOff ? '' : `<div class="tpl"><div class="tthumb" style="background-image:url('${assetUrl(side.background) || ''}');width:${Math.round(CARD.w * tk)}px;height:${Math.round(CARD.h * tk)}px"></div><div class="row sm"><button class="btn sm" id="bUp">${ICON.upload}${side.background ? 'Change' : 'Choose'} image</button>${side.background ? '<button class="btn sm ghost danger" id="bClr">Remove</button>' : ''}</div></div>
+        <label class="f inline">Background colour<input type="color" class="input" id="bBg" value="${side.bgColor || '#ffffff'}"></label>
         ${side.background ? fade('bBgOp', 'Image opacity', side.bgOpacity, 0) + tone('bBgT', side, BG_TONE, 'Adjustments') : ''}`}
         <input type="file" id="bFile" accept="${PHOTO_ACCEPT}" hidden></div>
       <div class="fieldset"><h3>Fields</h3>
@@ -204,7 +204,7 @@ export function createBuilder(ctx) {
           return `<div class="fld ${on ? 'on' : ''}"><label><input type="checkbox" data-tick="${f}" ${on ? 'checked' : ''}><span>${esc(fieldInfo(f).label)}</span></label>
             ${on ? (here ? `<button class="fchip placed" data-pick="${f}" title="Select on card">${ICON.check}On ${B.side}</button>` : `<button class="fchip" draggable="true" data-drag="${f}" title="Drag onto the card, or click to place it in the middle" ${backOff ? 'disabled' : ''}>${ICON.grip}Drag onto card</button>`) : ''}</div>`; }).join('')}
         </div></div>
-      <div class="fieldset"><h3>Design</h3><div class="flist">${ADDABLE.map(([k, l]) => `<div class="fld on"><span style="padding-left:2px">${fieldInfo(k).label === 'Text' ? 'Fixed text' : fieldInfo(k).label}</span><button class="fchip" draggable="true" data-drag="${k}" title="Drag onto the card, or click to add" ${backOff ? 'disabled' : ''}>${ICON.grip}${l}</button></div>`).join('')}</div></div>`;
+      <div class="fieldset"><h3>Design</h3><div class="flist">${ADDABLE.map(([k, l]) => `<div class="fld on"><span>${fieldInfo(k).label === 'Text' ? 'Fixed text' : fieldInfo(k).label}</span><button class="fchip" draggable="true" data-drag="${k}" title="Drag onto the card, or click to add" ${backOff ? 'disabled' : ''}>${ICON.grip}${l}</button></div>`).join('')}</div></div>`;
     // Size and orientation: set design.card the way the service does, keep every element on the card, resize the stage.
     const setCard = (patch) => {
       const next = cardFor({ ...card, ...patch });
@@ -257,9 +257,9 @@ export function createBuilder(ctx) {
       const users = S.clients.filter(c => (c.templateIds || []).includes(B.id));
       const onSide = els().reverse();   // top-most first, as they stack on the card
       const sub = (x) => x.field === 'text' ? esc(x.text || '') : x.field === 'barcode' ? `${BARCODE_TYPES.find(t => t[0] === x.symbol)?.[1] || ''} · ${x.source === 'text' ? 'fixed text' : esc(fieldInfo(x.source).label)}` : `${x.w} × ${x.h} px`;
-      R.innerHTML = `<div class="fieldset"><h3>On the ${B.side}${onSide.length > 1 ? ' <small class="muted">top to bottom</small>' : ''}</h3>${onSide.length ? `<div class="stack" style="gap:6px">${onSide.map(x => `<button class="ditem" data-sel="${esc(x.id)}" style="padding:8px 10px"><span class="fdot ${x.field === 'photo' ? 'ph' : ''}"></span><div style="min-width:0"><b>${esc(label(x))}</b><span>${sub(x)}</span></div></button>`).join('')}</div>` : '<span class="hint">Nothing on this side yet.</span>'}</div>
-        <div class="fieldset"><h3>Used by</h3>${users.length ? users.map(c => `<a class="chip info" href="#/clients/${c.id}/people" style="text-decoration:none">${esc(c.name)}${c.defaultDesignId === B.id ? ' · default' : ''}</a>`).join(' ') : '<span class="hint">Not assigned yet.</span>'}
-          <button class="btn sm" id="bAssign2" style="align-self:flex-start">${ICON.clients}Assign to clients</button></div>
+      R.innerHTML = `<div class="fieldset"><h3>On the ${B.side}${onSide.length > 1 ? ' <small class="muted">top to bottom</small>' : ''}</h3>${onSide.length ? `<div class="stack sm">${onSide.map(x => `<button class="ditem" data-sel="${esc(x.id)}"><span class="fdot ${x.field === 'photo' ? 'ph' : ''}"></span><div style="min-width:0"><b>${esc(label(x))}</b><span>${sub(x)}</span></div></button>`).join('')}</div>` : '<span class="hint">Nothing on this side yet.</span>'}</div>
+        <div class="fieldset"><h3>Used by</h3>${users.length ? `<div class="chips">${users.map(c => `<a class="chip info" href="#/clients/${c.id}/people">${esc(c.name)}${c.defaultDesignId === B.id ? ' · default' : ''}</a>`).join('')}</div>` : '<span class="hint">Not assigned yet.</span>'}
+          <button class="btn sm" id="bAssign2">${ICON.clients}Assign to clients</button></div>
         <div class="fieldset"><h3>Card</h3><span class="hint num">${cardLabel(B.draft.card)} · ${cardDims(B.draft.card)}</span></div>`;
       $$('[data-sel]', R).forEach(b => b.onclick = () => { B.sel = b.dataset.sel; refresh(); });
       $('#bAssign2').onclick = assign;
@@ -269,8 +269,8 @@ export function createBuilder(ctx) {
     const order = els(), at = order.indexOf(e);   // its place in this side's stacking order (last = on top)
     const num = (k, lbl, attrs = '') => `<label class="f">${lbl}<input class="input sm num" type="number" data-k="${k}" value="${e[k] ?? 0}" ${attrs}></label>`;
     const seg = (k, opts) => `<div class="seg sm" data-seg="${k}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${String(e[k] ?? '') === String(v) ? 'on' : ''}" title="${l}">${l}</button>`).join('')}</div>`;
-    const colour = (k, lbl) => `<label class="f" style="flex-direction:row;align-items:center;gap:8px">${lbl}<input type="color" class="input" data-k="${k}" data-str value="${e[k] || '#000000'}"></label>`;
-    const toggle = (k, lbl) => `<label class="check" style="border:0;padding:0;align-items:center;gap:8px"><label class="switch"><input type="checkbox" data-k="${k}" data-bool ${e[k] ? 'checked' : ''}><i></i></label><span>${lbl}</span></label>`;
+    const colour = (k, lbl) => `<label class="f inline">${lbl}<input type="color" class="input" data-k="${k}" data-str value="${e[k] || '#000000'}"></label>`;
+    const toggle = (k, lbl) => `<label class="check bare"><label class="switch"><input type="checkbox" data-k="${k}" data-bool ${e[k] ? 'checked' : ''}><i></i></label><span>${lbl}</span></label>`;
     const rotation = `<div class="f"><span>Rotation</span>${seg('rotate', [[0, '0°'], [90, '90°'], [180, '180°'], [270, '270°']])}</div>`;
     const info = fieldInfo(e.field);
     const sources = [...new Set(['staffId', ...[...ticked()].filter(k => k !== 'photo'), ...customFields()])].map(k => [k, fieldInfo(k).label]);
@@ -279,17 +279,17 @@ export function createBuilder(ctx) {
           ${e.side === 'front' ? `<span class="hint num" id="bSpec">At least ${specLine(photoSpec(B.draft))}</span>` : ''}</div>
         <div class="fieldset"><h3>Style</h3><div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div>
           <div class="row">${colour('borderColor', 'Border')}${colour('bgColor', 'Empty')}</div>
-          <button class="btn sm" id="b34" style="align-self:flex-start">Make 3:4 portrait</button></div>`,
-      image: `<div class="fieldset"><h3>Image</h3><div class="row" style="gap:6px"><button class="btn sm" id="bImg">${ICON.upload}${e.asset ? 'Change' : 'Choose'} image</button></div>
+          <button class="btn sm" id="b34">Make 3:4 portrait</button></div>`,
+      image: `<div class="fieldset"><h3>Image</h3><div class="row sm"><button class="btn sm" id="bImg">${ICON.upload}${e.asset ? 'Change' : 'Choose'} image</button></div>
           <div class="f"><span>Fit</span>${seg('fit', [['contain', 'Fit inside'], ['cover', 'Fill box']])}</div>
           <input type="file" id="bImgFile" accept="${PHOTO_ACCEPT}" hidden></div>`,
-      box: `<div class="fieldset"><h3>Shape</h3><div class="row" style="gap:10px">${colour('fill', 'Fill')}${toggle('noFill', 'No fill')}</div>
+      box: `<div class="fieldset"><h3>Shape</h3><div class="row">${colour('fill', 'Fill')}${toggle('noFill', 'No fill')}</div>
           <div class="grid2">${num('radius', 'Corner radius', 'min="0"')}${num('borderWidth', 'Border', 'min="0"')}</div><div class="row">${colour('borderColor', 'Border')}</div></div>`,
       barcode: `<div class="fieldset"><h3>Barcode</h3>
           <label class="f">Type<select class="input sm" data-k="symbol" data-str>${BARCODE_TYPES.map(([k, l]) => `<option value="${k}" ${e.symbol === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="f">Data<select class="input sm" data-k="source" data-str>${sources.map(([k, l]) => `<option value="${k}" ${e.source === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}<option value="text" ${e.source === 'text' ? 'selected' : ''}>Fixed text</option></select></label>
           ${e.source === 'text' ? `<label class="f">Text<input class="input sm" data-k="text" data-str value="${esc(e.text || '')}"></label>` : ''}
-          <div class="row" style="gap:10px">${colour('color', 'Colour')}${['code128', 'code39'].includes(e.symbol) ? toggle('showText', 'Show the text') : ''}</div>
+          <div class="row">${colour('color', 'Colour')}${['code128', 'code39'].includes(e.symbol) ? toggle('showText', 'Show the text') : ''}</div>
           ${rotation}<span class="hint" id="bBcErr"></span></div>`,
       text: `${e.field === 'text' ? `<div class="fieldset"><label class="f">Text<input class="input sm" data-k="text" data-str value="${esc(e.text || '')}"></label></div>` : ''}
         <div class="fieldset"><h3>Text</h3>
@@ -297,7 +297,7 @@ export function createBuilder(ctx) {
             <label class="f">Weight<select class="input sm" data-k="weight">${Object.entries(WEIGHTS).map(([w, l]) => `<option value="${w}" ${+e.weight === +w ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
           <div class="grid2">${num('size', 'Size', 'min="6" max="300"')}${num('minSize', 'Smallest', 'min="6" max="300"')}</div>
           ${info.type === 'date' ? `<label class="f">Date format<select class="input sm" data-k="dateFormat" data-str>${DATE_FORMATS.map(f => `<option value="${f}" ${(e.dateFormat || 'DD/MM/YYYY') === f ? 'selected' : ''}>${formatDate(info.sample, f)}</option>`).join('')}</select></label>` : ''}
-          <div class="row" style="gap:10px">${colour('color', 'Colour')}${toggle('uppercase', 'CAPITALS')}</div>
+          <div class="row">${colour('color', 'Colour')}${toggle('uppercase', 'CAPITALS')}</div>
           <div class="f"><span>Align</span>${seg('align', [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']])}</div>
           <div class="f"><span>Vertical</span>${seg('valign', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']])}</div>
           ${rotation}
@@ -306,9 +306,9 @@ export function createBuilder(ctx) {
     R.innerHTML = `<div class="fieldset"><h3><span class="fdot ${kind === 'photo' ? 'ph' : ''}"></span>${esc(label(e))}<span class="sp"></span><button class="btn sm ghost danger" id="bRm" title="Remove from card">${ICON.trash}</button></h3></div>
       ${panels[kind]}
       <div class="fieldset"><h3>Position and size <small class="muted">px</small></h3><div class="grid2">${num('x', 'X')}${num('y', 'Y')}${num('w', 'Width', 'min="16"')}${num('h', 'Height', 'min="16"')}</div>
-        <div class="stack" style="gap:6px"><button class="btn sm" id="bCx" style="justify-content:flex-start">${IC.ch}Centre horizontally</button><button class="btn sm" id="bCy" style="justify-content:flex-start">${IC.cv}Centre vertically</button>
-          <div class="row" style="gap:6px"><button class="btn sm" id="bCc">${IC.cc}Centre on card</button><button class="btn sm" id="bFw">Full width</button></div></div></div>
-      <div class="fieldset"><h3>Arrange</h3><div class="grid2" style="gap:6px">${ARRANGE.map(([d, l, ic, tip], i) => `<button class="btn sm" data-arr="${d}" title="${tip}" style="justify-content:flex-start" ${(i < 2 ? at === order.length - 1 : at === 0) ? 'disabled' : ''}>${IC[ic]}${l}</button>`).join('')}</div>
+        <div class="stack sm"><button class="btn sm left" id="bCx">${IC.ch}Centre horizontally</button><button class="btn sm left" id="bCy">${IC.cv}Centre vertically</button>
+          <div class="row sm"><button class="btn sm" id="bCc">${IC.cc}Centre on card</button><button class="btn sm" id="bFw">Full width</button></div></div></div>
+      <div class="fieldset"><h3>Arrange</h3><div class="grid2 sm">${ARRANGE.map(([d, l, ic, tip], i) => `<button class="btn sm left" data-arr="${d}" title="${tip}" ${(i < 2 ? at === order.length - 1 : at === 0) ? 'disabled' : ''}>${IC[ic]}${l}</button>`).join('')}</div>
         ${fade('bOp', 'Opacity', e.opacity, 5)}</div>
       ${['photo', 'image'].includes(kind) ? `<div class="fieldset"><h3>Adjustments<span class="sp"></span>${toneReset('bT', e, EL_TONE)}</h3>${tone('bT', e, EL_TONE)}</div>` : ''}`;
     $$('[data-arr]', R).forEach(b => b.onclick = () => arrange(b.dataset.arr));
@@ -361,7 +361,7 @@ export function createBuilder(ctx) {
   function paintAlign() {
     const box = $('#bAlign'); if (!box) return;
     const e = selEl();
-    box.innerHTML = e ? `<span class="hint" style="margin-right:2px">${esc(label(e))}:</span>
+    box.innerHTML = e ? `<span class="hint">${esc(label(e))}:</span>
       <button class="btn sm" data-c="h" title="Centre horizontally on the card">${IC.ch}Centre horizontally</button>
       <button class="btn sm" data-c="v" title="Centre vertically on the card">${IC.cv}Centre vertically</button>
       <button class="btn sm" data-c="both" title="Centre on the card">${IC.cc}Both</button>` : '';

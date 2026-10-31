@@ -283,6 +283,7 @@ internal sealed partial class Routes(AppService app, Router router)
             Config["delayBetweenCards"] = Js.NumNode(Math.Max(0, Math.Min(600, Js.NumOr(Config["delayBetweenCards"], 0))));
             Config["jobTimeoutMin"] = Js.NumNode(Math.Max(1, Math.Min(120, Js.NumOr(Config["jobTimeoutMin"], 10))));
             Config["sessionIdleMin"] = Js.NumNode(Math.Max(5, Math.Min(1440, Math.Round(Js.NumOr(Config["sessionIdleMin"], 120), MidpointRounding.AwayFromZero))));
+            Config["enhancePhotos"] = Js.Truthy(Config["enhancePhotos"]); Config["alignFaces"] = Js.Truthy(Config["alignFaces"]);
             if (Js.AsString(Config["cardSides"]) is not ("single" or "dual")) Config["cardSides"] = "dual";
             if (Js.AsString(Config["backMethod"]) is not ("auto" or "manual")) Config["backMethod"] = "auto";
             if (body.ContainsKey("backMethod")) Config["backMethodChosen"] = true;

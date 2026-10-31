@@ -127,7 +127,7 @@ Click a field on the card to select it. The right panel shows its settings:
 
 - **Text**: font, weight, size, colour, **CAPITALS**, alignment, rotation and letter spacing. Text always stays inside its box: a long name shrinks down to the **Smallest** size, then moves onto two lines if the box has room, then shrinks further.
 - **Dates**: choose the **Date format**, such as 31/03/2027 or 31 Mar 2027.
-- **Photo**: the frame's photo size shows under **Photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Choose **Fill the frame** (photos of another shape are trimmed at the edges) or **Whole photo** (nothing is cut off; any space shows the frame's colour). Also corner radius, border, the frame's colour, and **Make 3:4 portrait** for the usual photo shape. Each person's photo can still be moved and zoomed when you add or edit them.
+- **Photo**: the frame's photo size shows under **Photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Choose **Fill the frame** (photos of another shape are trimmed at the edges) or **Whole photo** (nothing is cut off; any space shows the frame's colour). To line everyone's faces up instead, turn on **Line up faces on every card** in **Settings** (see [Line up faces](#people)). Also corner radius, border, the frame's colour, and **Make 3:4 portrait** for the usual photo shape. Each person's photo can still be moved and zoomed when you add or edit them.
 - **Position and size**: exact X, Y, width and height in pixels, plus **Centre horizontally**, **Centre vertically**, **Centre on card** and **Full width**.
 
 Use the bin button to remove the selected field from the card.
@@ -222,22 +222,59 @@ The card preview on the right shows the card as it will print.
 
 ### Position the photo
 
-The photo is fitted to the card's photo frame automatically, as the template says: filling the frame, or showing the whole photo. To adjust one person's photo:
+The photo is fitted to the card's photo frame automatically: lined up by the face when **Line up faces on every card** is on in **Settings**, otherwise as the template says (filling the frame, or showing the whole photo). To adjust one person's photo:
 
 - Drag the photo on the card preview to move it.
 - Use **Zoom**, or scroll on the photo, to zoom in or out. Zoom snaps to filling the frame exactly, so no gap is left down a side. Zoomed right out, the whole photo shows and nothing is cut off.
 - Choose **Whole photo** to show all of it in one step, **Reset position** to go back to the template's fit, or **Remove photo** to take it off.
+- Choose **Enhance** to improve a dark, dull or grainy photo. Choose **Undo enhance** to put it back as it was. When **Enhance photos that need it** is on in **Settings**, a photo you add is enhanced straight away if it needs it, and the button shows **Undo enhance**.
+
+**Enhance** works only with what's in the photo:
+
+- It sets the darkest and lightest parts to black and white, which fixes a photo that's dull, washed out or too dark all over.
+- It smooths grain from a photo taken in poor light, but keeps edges sharp. A clean photo isn't smoothed.
+- It brings out detail in shadows.
+- It sharpens a little.
+
+It doesn't change colours: a light blue backdrop and a blue tint look the same to the program, so correcting the tint would also turn faces orange. It doesn't lighten faces either: a face in shadow and darker skin look the same to the program, and a person's skin must stay as it is. It doesn't invent detail, so the photo still looks like the person. It can't fix a photo that's out of focus or very small: retake those.
 
 Any space around a photo that doesn't fill the frame shows the frame's colour, set in the template.
+
+### Line up faces
+
+When **Line up faces on every card** is on in **Settings** (under **Photos**), everyone's face is the same size and in the same place on their card, however their photo was taken: close up or from further away, centred or off to one side. Their eyes are lined up across the cards, with the head filling about three quarters of the frame, as on a passport photo. It's off to start.
+
+- The program finds each face when the photo is added, whether one person at a time, by [importing](#importing-people-from-a-spreadsheet) or by [updating in bulk](#updating-people-in-bulk). It only finds where the eyes are: it never changes the photo, and nothing is sent anywhere. The face finder is part of the program and runs on this PC, with no internet connection needed.
+- People whose photos were added while it was off need their faces found once. Choose **Line up faces** above the list of people (it shows how many). They're done one at a time with a progress bar.
+- A photo cropped tightly around the face doesn't have enough around it to move the face into place. The program first makes it a little bigger (the face up to 15% larger than everyone else's), which gives it room. If that's still not enough, the part of the frame the photo doesn't reach is filled with a soft blur of the colours along the photo's edge, so the backdrop just carries on. Nothing from inside the photo is copied, and the person isn't changed. Only an extreme close-up stops short, with a bigger face.
+- For the best results, use photos with the head and shoulders and some space around the head, taken front on.
+- If no face is found (the person is side on or turned away, the face is very small in the photo, or there's no face), the photo is fitted as the template says and the person shows **Face not found** in the list. A face that's found but turned to one side shows **Face turned away**, and one too tightly cropped to line up shows **Photo too close-up**. See [People who need checking](#people).
+- You can still move and zoom anyone's photo by hand. **Reset position** puts it back to the same face size.
+- Turning it off puts every photo back as the template says.
 
 Photos are shrunk to a sensible size when you add them, so large camera photos are fine.
 
 ### Find people
 
 - Type in **Search** to find people by name or any detail shown in the list.
-- Use **Show** to list only **Active cards**, **Lost or stolen**, **Returned**, **Expired or expiring**, or people who were **Never printed**.
+- Use **Show** to list only people who **Needs checking** (see below), **Active cards**, **Lost or stolen**, **Returned**, **Expired or expiring**, or people who were **Never printed**.
 
-The list shows each person's photo, details, when their card was last printed and how many cards they've had. A **No photo** label marks anyone without a photo.
+The list shows each person's photo, details, when their card was last printed and how many cards they've had.
+
+### People who need checking
+
+A label under a person's name says when their photo needs checking before you print their card:
+
+| Label | Meaning | What to do |
+|---|---|---|
+| No photo | They have no photo yet | Add one, or import their photos with [Updating people in bulk](#updating-people-in-bulk) |
+| Face not found | **Line up faces** is on, but no face was found, so the photo is fitted as the template says | Edit them to move or zoom the photo by hand, or give them a clearer, front-on photo |
+| Face turned away | The face is turned to one side (side on, or clearly three-quarter), so it may not line up like everyone else's, and isn't a front-on ID photo | Give them a front-on photo |
+| Photo too close-up | The photo is cropped so tightly around the face that it can't be made the same size as everyone else's | Give them a photo with the head and shoulders and some space around the head |
+| Photo too small | The photo has too few pixels for the card's photo frame, so it would print soft | Give them a larger photo, such as one straight from the camera |
+| Poor photo | The photo is still clearly dull, dark or grainy | Try **Enhance**, or give them a better photo |
+
+Choose **Show** and then **Needs checking** to list just these people. At the end of an import or bulk update, the program also lists anyone whose new photo needs checking, grouped by problem; choose **Show who needs checking** to see them in the list. Photos added before version 3.0.15 aren't checked for these, apart from **No photo**.
 
 ### Card status
 
@@ -269,16 +306,21 @@ Dates can be written as 31/03/2027 or 2027-03-31.
 
 ### 2. Name the photos
 
-Name each photo after the person: their first name, then their last name. Capitals, spaces, dashes and underscores don't matter, so for John Smith any of these match:
+Name each photo after the person: their first name, then their last name, next to each other (last name first works too). Other words before or after the name are fine. Capitals, spaces, dashes and underscores don't matter, so for John Smith any of these match:
 
 | Photo file names that match John Smith |
 |---|
 | `John Smith.jpg`, `JOHN SMITH.jpg`, `john smith.jpg` |
 | `JohnSmith.jpg`, `JOHNSMITH.jpg`, `johnsmith.jpg` |
 | `John_Smith.jpg`, `john-smith.jpg`, `Smith John.jpg` |
+| `John Smith ID Photo Good.jpg`, `0042 John Smith.jpg`, `ID - SMITH John 2026.heic` |
+
+- The two names must be next to each other: `John Paul Smith.jpg` doesn't match John Smith.
+- If one photo is named just the name (`John Smith.jpg`) and another has other words too (`John Smith old.jpg`), the one named just the name is used.
+- If two photos both have other words (`John Smith good.jpg` and `John Smith bad.jpg`), neither is used, because the program can't tell which one you want. Remove the one you don't want from the folder.
 
 - Macrons and accents don't matter either, so `Mere Tuhoe.jpg` matches Mere Tūhoe.
-- Photos can be JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP or GIF, of any size or shape, and can be mixed. The program converts them as needed. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), and you can adjust any of them afterwards.
+- Photos can be JPG, PNG, HEIC (iPhone photos), WebP, TIFF, AVIF, BMP or GIF, of any size or shape, and can be mixed. The program converts them as needed. Each one is fitted to the card's photo frame as the template says (filling it, or showing the whole photo), or [lined up by the face](#people) when that's on in **Settings**, and you can adjust any of them afterwards.
 - The photo size the template needs is shown under **Add the ID photos**, such as *At least 360 × 480 px · 30.5 × 40.6 mm · 3:4 portrait*. Photos of that shape fill the frame without being trimmed.
 - Only the file name matters. Nothing needs to be written on the photo.
 
@@ -288,19 +330,22 @@ The CSV doesn't need a photo column: each person's photo is found by their name.
 
 1. Choose **Upload CSV** and pick your CSV file.
 2. Choose **Choose folder** and pick the folder with the photos, or **Choose files** to pick them one by one. Every type of photo is ticked to start with, and the number of each type found is shown beside it: untick a type to leave those files out.
-3. Check the list. Each row shows the photo it matched and its status:
+3. To improve photos that are off, tick **Enhance photos that need it** (it's ticked to start when that's on in **Settings**). Each photo is checked, and only those that are dull, washed out, too dark all over or grainy are enhanced; the rest are kept as they are. (A file's size doesn't show this: it mostly depends on how many pixels the photo has.) The thumbnails in the list show how each photo will look, and the enhanced ones are outlined. See [People](#people) for what Enhance does.
+4. Check the list. Each row shows the photo it matched and its status:
 
 | Status | Meaning |
 |---|---|
 | Ready | Will be imported with its photo |
 | No photo | Will be imported without a photo |
 | Photo not found | The CSV names a photo you didn't choose; held back |
-| Same name twice: no photo | Two rows have the same name, so their photo can't tell them apart. Both are imported without a photo; add each one's photo by editing them |
+| More than one photo: no photo | More than one photo has the person's name (they're listed in the row). Imported without a photo: add it by editing them, or remove the extra photos from the folder and choose it again |
+| Shared photo: no photo | The photo has the name of more than one person: two rows with the same name, or two names in one photo name. Each is imported without a photo; add each one's photo by editing them |
 | Name missing | The row has no name; held back |
 | Already in client | Someone with that name is already in the client; unticked |
 
-4. Untick anyone you don't want, then choose **Import**.
-5. The program offers to print the new people's cards straight away.
+5. Untick anyone you don't want, then choose **Import**. People are imported one at a time, so even 1,000 people work through steadily without slowing the PC. A window shows a progress bar, who is being imported (*Importing 312 of 1,000: Jane Doe*) and how many photos have been enhanced. **Stop** stops after the person being imported; everyone before them stays imported.
+   At the end, the program lists anyone who couldn't be imported, with the reason, and anyone whose photo needs checking (such as **Face not found** or **Photo too small**), grouped by problem. See [People who need checking](#people).
+6. The program offers to print the new people's cards straight away.
 
 > **Note:** Importing the same CSV again skips everyone already added, so you can fix a few rows and import again.
 
@@ -310,7 +355,7 @@ Change details or add photos for many people already in a client at once, for ex
 
 1. Open the client and choose **Bulk update**.
 2. To change details, under **Upload a CSV of changes** choose **Upload CSV** and pick a CSV with **First Name**, **Last Name** and a column for each detail to change. The easiest way is to choose **Export people**, change the cells you want in Excel, and save it as CSV.
-3. To add or replace photos, under **Add the ID photos** choose **Choose folder** or **Choose files**. They're matched by name exactly as when [importing](#importing-people-from-a-spreadsheet): `John Smith.heic` goes to John Smith. Untick any type of photo to leave it out.
+3. To add or replace photos, under **Add the ID photos** choose **Choose folder** or **Choose files**. They're matched by name exactly as when [importing](#importing-people-from-a-spreadsheet): `John Smith.heic` and `John Smith ID Photo.jpg` go to John Smith. Untick any type of photo to leave it out, and tick **Enhance photos that need it** to improve the ones that are off.
 4. Check the list. It shows each person who will change, what changes (such as *Position: Driver → Supervisor*, *Adds photo* or *Replaces photo*) and the new photo:
 
 | Status | Meaning |
@@ -320,14 +365,18 @@ Change details or add photos for many people already in a client at once, for ex
 | Not found | Nobody in the client has that name; the row is left out |
 | Same name twice: skipped | Two people in the client have that name, so the program can't tell whose row or photo it is. Update them by editing them |
 | In the CSV twice: skipped | The CSV has two rows for the same person, so neither is used |
+| More than one photo: skipped | More than one photo has the person's name (they're listed in the row), so it isn't clear which one to use |
+| Shared photo: skipped | The photo has the name of more than one person, so it isn't clear whose it is |
 
-5. Untick anyone you don't want, then choose **Update** (the button shows how many people).
+If a person has CSV changes as well, those changes are still made and only the photo is left as it is.
+
+5. Untick anyone you don't want, then choose **Update** (the button shows how many people). As when importing, people are updated one at a time with a progress window, and at the end the program lists anyone who couldn't be updated and anyone whose new photo needs checking.
 
 You can use either step on its own: just photos, or just a CSV.
 
 - A blank cell leaves that detail as it is. Names are never changed: they're how people are found.
 - A new photo replaces the person's old one, and its position on the card goes back to the template's fit.
-- Photos that matched nobody are listed under the table (*3 photos matched nobody*), so you can check their names.
+- Photos that aren't used are listed under the table (*3 photos not used*), so you can check their names.
 
 ## Printing cards
 
@@ -468,6 +517,13 @@ In **Settings**, under **Printing**:
 | Pause the queue on printer problems | Waits while the printer has a problem, instead of sending more cards |
 | Pause between cards (seconds) | Waits between cards, for printers that need a rest |
 | Flag a card as slow after (minutes) | Warns you when a card takes longer than this |
+
+Under **Photos**, both off to start:
+
+| Setting | Does |
+|---|---|
+| Enhance photos that need it | Every new photo, whether added one at a time, imported or updated in bulk, is enhanced if it's dull, washed out, too dark all over or grainy. See [Position the photo](#people) for what Enhance does |
+| Line up faces on every card | Every card's photo is lined up by the face, so faces are the same size and in the same place. See [Line up faces](#people) |
 
 Under **Supplies**, set when to warn about a low ribbon or HDP film.
 
@@ -737,7 +793,7 @@ Check the template's card size matches the cards in the printer, and that the pr
 
 ### Photos didn't match when importing
 
-Check each photo is named after the person, first name then last name (such as `John Smith.jpg`), and that the CSV's names are spelt the same. See [Importing people from a spreadsheet](#importing-people-from-a-spreadsheet).
+Check each photo has the person's first name then last name next to each other (such as `John Smith.jpg` or `John Smith ID Photo.jpg`), and that the CSV's names are spelt the same. A row marked *More than one photo* has two photos with that name: remove the one you don't want. See [Importing people from a spreadsheet](#importing-people-from-a-spreadsheet).
 
 ### The back prints upside down
 

@@ -1,9 +1,11 @@
 import { makeProofSheet } from './proof.js';
 import { createAdmin } from './admin.js';
-import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, photoSpec, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel, openImage, photoFormat, PHOTO_ACCEPT, PHOTO_FORMATS, showsAsIs } from './render.js';
+import { drawCard, cardDataUrl, loadImage, assetUrl, photoGeometry, photoBox, photoSpec, PERSON_FIELDS, designFields, setCustomFields, customFields, fieldInfo, formatDate, cardLabel, openImage, photoFormat, PHOTO_ACCEPT, PHOTO_FORMATS, showsAsIs, shrinkInto, photoIssues, PHOTO_ISSUES, setLineUpFaces } from './render.js';
+import { enhancePixels, photoCheck } from './enhance.js';
+import { findFace } from './face.js';
 import { createBuilder } from './builder.js';
 import { LICENSE_TEXT, LICENSE_VERSION, SUPPORTED_PRINTERS_TEXT } from './legal.js';
-import { readPeople, buildPhotoIndex, matchPhoto, planUpdate } from './csv.js';
+import { readPeople, buildPhotoIndex, matchPhoto, photosByName, planUpdate } from './csv.js';
 import { createHelp } from './helpview.js';
 // (people import uses these)
 
@@ -69,6 +71,7 @@ const ICON = {
   template: '<svg viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>',
   doc: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
   palette: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.6 1.7-1.6H16a5 5 0 0 0 5-5c0-4-4-7.3-9-7.3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/></svg>',
+  wand: '<svg viewBox="0 0 24 24"><path d="M4 20l10-10"/><path d="M15 3v4M13 5h4M19 9v3M17.5 10.5h3M8 4v2M7 5h2"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>',
 };
 
@@ -260,17 +263,17 @@ async function openPrinterDrawer() {
       <dl class="kv"><dt>Printer</dt><dd>${esc(sim ? 'Simulator (no printer connected)' : S.config.printerName || 'Not selected')}</dd>
         <dt>Driver</dt><dd>${esc(p.driver || '—')}</dd><dt>Port</dt><dd>${esc(p.port || '—')}</dd>
         <dt>Last checked</dt><dd class="num">${p.ts ? new Date(p.ts).toLocaleTimeString() : '—'}</dd></dl>
-      ${p.supplies ? `<div class="stack" style="gap:14px"><div class="sec-label">Supplies</div>${suppliesHtml(true) || '<div class="hint">The driver has not reported ribbon or film levels yet.</div>'}
+      ${p.supplies ? `<div class="stack"><div class="sec-label">Supplies</div><div class="meters">${suppliesHtml(true) || '<div class="hint">The driver has not reported ribbon or film levels yet.</div>'}</div>
         <dl class="kv">${p.supplies.cardCount != null ? `<dt>Card counter</dt><dd class="num">${p.supplies.cardCount.toLocaleString()} cards printed</dd>` : ''}
           <dt>Dual-sided</dt><dd>${p.supplies.modules.flipper === true ? 'Flipper fitted' : p.supplies.modules.flipper === false ? '<span style="color:var(--amber-ink)">No flipper module reported</span>' : 'Unknown'}</dd>
           <dt>FARGO codes</dt><dd class="num">Status ${p.supplies.codes.status ?? '—'} · Printer error ${p.supplies.codes.printerError ?? '—'} · Device error ${p.supplies.codes.deviceError ?? '—'}</dd></dl></div>` : ''}
-      <div class="stack" style="gap:8px">${p.alerts.length ? p.alerts.map(a => `<div class="alert ${a.level}"><span style="color:${a.level === 'error' ? 'var(--err)' : 'var(--amber)'};width:20px;flex:none">${ICON.warn}</span><div><b>${esc(a.title)}</b><span>${esc(a.detail)}</span></div></div>`).join('')
+      <div class="stack sm">${p.alerts.length ? p.alerts.map(a => `<div class="alert ${a.level}"><span style="color:${a.level === 'error' ? 'var(--err)' : 'var(--amber)'};width:20px;flex:none">${ICON.warn}</span><div><b>${esc(a.title)}</b><span>${esc(a.detail)}</span></div></div>`).join('')
         : `<div class="alert ok"><span style="color:var(--ok);width:20px;flex:none">${ICON.check.replace('<svg', '<svg fill="none" stroke="currentColor" stroke-width="2.5"')}</span><div><b>${p.busy ? 'Printing' : 'Ready to print'}</b><span>No ribbon, card or connection problems reported.</span></div></div>`}</div>
-      <div><div class="sec-label" style="margin-bottom:8px">Jobs in the Windows queue</div>
+      <div class="stack"><div class="sec-label">Jobs in the Windows queue</div>
         ${p.jobs.length ? `<div class="evlog">${p.jobs.map(j => `<div><time>#${j.id}</time><span><b>${esc(j.document)}</b> · ${esc(j.status || 'Queued')}</span></div>`).join('')}</div>` : '<div class="hint">No jobs waiting in Windows.</div>'}</div>
-      ${sim ? `<div class="card" style="box-shadow:none"><div class="card-b stack" style="gap:10px"><div class="sec-label">Simulator</div><label class="f">Simulate a printer condition<select class="input" id="simCond">
+      ${sim ? `<div class="card" style="box-shadow:none"><div class="card-b stack"><div class="sec-label">Simulator</div><label class="f">Simulate a printer condition<select class="input" id="simCond">
         ${[['', 'Normal'], ['ribbon-low', 'Ribbon low'], ['ribbon-out', 'Ribbon out'], ['cards-out', 'Out of cards'], ['jam', 'Card jam'], ['door', 'Cover open'], ['offline', 'Printer offline / USB unplugged'], ['attention', 'Needs attention']].map(([v, l]) => `<option value="${v}" ${S.simCond === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div></div>` : ''}
-      <div><div class="sec-label" style="margin-bottom:8px">Recent printer events</div>
+      <div class="stack"><div class="sec-label">Recent printer events</div>
         ${events.length ? `<div class="evlog">${events.slice(0, 40).map(ev => `<div><time>${fmtDateTime(ev.ts)}</time><span>${ev.type === 'cleared' ? `<span class="muted">Cleared:</span> ${esc(ev.code)}` : `<b style="color:${ev.level === 'error' ? 'var(--err)' : 'var(--amber-ink)'}">${esc(ev.title)}</b>`}</span></div>`).join('')}</div>` : '<div class="hint">No alerts recorded yet.</div>'}</div>
       <div class="row">${!sim ? '<button class="btn" id="dPrefs">Printing preferences</button><button class="btn" id="dQueue">Windows print queue</button>' : ''}<a class="btn" href="#/settings" id="dSet">Printer settings</a></div>
 
@@ -324,14 +327,14 @@ function connect() {
   es.addEventListener('printer', e => { S.printer = JSON.parse(e.data); renderShell(); checkAlerts(); drawerOpen?.refresh(); current?.onPrinter?.(); });
   es.addEventListener('worker', e => { S.worker = JSON.parse(e.data); renderShell(); checkAlerts(); current?.onQueue?.(); });
   es.addEventListener('queue', e => { S.queue = JSON.parse(e.data); renderShell(); current?.onQueue?.(); });
-  es.addEventListener('config', e => { S.config = JSON.parse(e.data); setCustomFields(S.config.customFields); applyBranding(brandingFromConfig(S.config)); renderShell(); current?.onConfig?.(); });
+  es.addEventListener('config', e => { S.config = JSON.parse(e.data); setCustomFields(S.config.customFields); setLineUpFaces(S.config.alignFaces); applyBranding(brandingFromConfig(S.config)); renderShell(); current?.onConfig?.(); });
   es.addEventListener('designs', e => { S.designs = JSON.parse(e.data); current?.onDesigns?.(); });
   es.addEventListener('clients', e => { S.clients = JSON.parse(e.data); current?.onClients?.(); });
   es.addEventListener('update', e => { S.update = JSON.parse(e.data); renderUpdate(); });
 }
 async function loadState(remount = true) {
   const st = await api('GET', '/api/state');
-  setCustomFields(st.config.customFields);
+  setCustomFields(st.config.customFields); setLineUpFaces(st.config.alignFaces);
   Object.assign(S, { config: st.config, designs: st.designs, clients: st.clients, queue: st.queue, printer: st.printer, worker: st.worker, version: st.version, platform: st.platform, dbFile: st.dbFile, security: st.security, simulator: !!st.simulator, user: st.user, license: st.license, update: st.update || null });
   applyBranding(st.branding);
   $('#ver').textContent = st.version;
@@ -388,14 +391,14 @@ function enablePhotoPan(canvas, getState, onChange) {
     if (!drag) return; const st = getState(); const box = photoBox(st.design); if (!box) return;
     const k = st.design.card.w / canvas.getBoundingClientRect().width;
     const g = photoGeometry(st.img, box, st.adj);
-    st.adj.ox = clampN(drag.ox + (e.clientX - drag.x) * k / box.w, g.maxX / box.w);
-    st.adj.oy = clampN(drag.oy + (e.clientY - drag.y) * k / box.h, g.maxY / box.h);
+    // The move is on top of where Line up faces put the photo (fx, fy), so it can reach each edge of the frame.
+    st.adj.ox = Math.max((-g.maxX - g.fx) / box.w, Math.min((g.maxX - g.fx) / box.w, drag.ox + (e.clientX - drag.x) * k / box.w));
+    st.adj.oy = Math.max((-g.maxY - g.fy) / box.h, Math.min((g.maxY - g.fy) / box.h, drag.oy + (e.clientY - drag.y) * k / box.h));
     onChange();
   });
   canvas.addEventListener('pointerup', () => drag = null);
   canvas.addEventListener('wheel', e => { const st = getState(); const box = photoBox(st.design); if (!st.img || !box) return; e.preventDefault(); const { minZoom } = photoGeometry(st.img, box, st.adj); st.adj.zoom = Math.max(minZoom, Math.min(4, (st.adj.zoom || 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06))); onChange(true); }, { passive: false });
 }
-const clampN = (v, m) => Math.max(-m, Math.min(m, v));
 
 // ======================================================================
 // Clients
@@ -427,18 +430,86 @@ const photoUrl = (p) => p.hasPhoto ? `/api/people/${p.id}/photo?v=${encodeURICom
 const initials = (s) => String(s || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 
 // Photos are stored inside the encrypted database, so they are resized first to keep it compact
-// (1600 px on the long side is several times what the card needs at 300 dpi).
-async function shrinkPhoto(file) {
+// (1600 px on the long side is several times what the card needs at 300 dpi). `enhance`: true always enhances
+// (enhance.js enhancePixels); 'needed' only when the photo is off (enhance.js photoCheck), and `enhanced` says whether
+// it was. `src` is the photo as opened, to make it again with or without Enhance. `face`: where its face is, for Line up
+// faces (faceOf); left unknown while that's off in Settings, for Line up faces to find later.
+async function shrinkPhoto(file, enhance = false) {
   const img = await openImage(file);
   if (!img) throw new Error(`${file.name} can't be opened as a photo`);
-  const max = 1600, k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const r = await photoJpeg(img, enhance);
+  return { ...r, name: file.name, src: img, face: S.config.alignFaces ? await faceOf(r.img) : undefined };
+}
+// The face in a photo (face.js), or null when none is found. When the face finder can't start, that's shown once and
+// the face is left unknown (undefined, so Line up faces tries again later) rather than stopping the photo being saved.
+let faceTrouble = false;
+async function faceOf(pic) {
+  try { return await findFace(pic); }
+  catch (e) { console.error(e); if (!faceTrouble) { faceTrouble = true; toast(e.message, 'err'); } return undefined; }
+}
+// The report at the end of an import, bulk update or Line up faces: who couldn't be done (`failed`, each with why, under
+// `failedTitle`), and which of the people done have a photo that needs checking (render.js photoIssues; not "No photo",
+// which the list showed before it started), by problem. `html` is empty when all went well; `actions` adds Show them.
+function runReport(failedTitle, failed, people, design) {
+  const by = {}, names = (list) => esc(list.slice(0, 12).join(', ')) + (list.length > 12 ? ` and ${list.length - 12} more` : '');
+  let checking = 0;
+  for (const p of people) {
+    const issues = photoIssues(p, design).filter(k => k !== 'noPhoto');
+    if (issues.length) checking++;
+    for (const k of issues) (by[k] ??= []).push(`${p.firstName} ${p.lastName}`.trim());
+  }
+  const html = (failed.length ? `<p class="hint"><b>${failedTitle}</b></p><ul class="hint">${failed.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '')
+    + (checking ? `<p class="hint"><b>${plural(checking, 'person')} need${checking === 1 ? 's' : ''} checking</b></p><ul class="hint">${Object.entries(by).map(([k, list]) => `<li>${PHOTO_ISSUES[k]} (${list.length}): ${names(list)}</li>`).join('')}</ul>` : '');
+  const actions = checking ? [{ label: 'Show who needs checking', onClick: () => { Object.assign(peopleTab.st, { show: 'check', q: '' }); peopleTab.paint(); } }] : [];
+  return { html, actions };
+}
+// The size and quality kept with a photo saved before they were checked, from the photo itself.
+function photoFacts(im) {
+  const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0);
+  return { w: c.width, h: c.height, poor: photoCheck(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height).poor };
+}
+// Finds the faces in photos saved while Line up faces was off (or before the face finder could start), one person at a time.
+async function lineUpFaces(c, people, design) {
+  const box = progressBox(`Lining up ${plural(people.length, 'face')}`, 'Finding faces', people.length), failed = [], saved = [];
+  let found = 0;
+  for (let i = 0; i < people.length && !box.stopped; i++) {
+    const p = people[i];
+    await box.show(i, `${p.firstName} ${p.lastName}`, `${found} found`);
+    try {
+      const im = new Image(); im.src = photoUrl(p); await im.decode();   // not loadImage: that keeps every photo in memory
+      const face = await faceOf(im);
+      if (face === undefined) break;   // the face finder can't start: already shown
+      saved.push(await api('PUT', `/api/people/${p.id}`, { adj: { zoom: 1, ox: 0, oy: 0, ...(p.adj || {}), face, photo: p.adj?.photo || photoFacts(im) } }));
+      if (face) found++;
+    } catch (e) { failed.push(`${`${p.firstName} ${p.lastName}`.trim()}: ${e.message}`); }
+  }
+  box.close(); await peopleTab.reload();
+  if (saved.length) toast(`Found ${found} of ${plural(saved.length, 'face')}${box.stopped ? ' (stopped early)' : ''}`, found === saved.length ? 'ok' : undefined);
+  const r = runReport('Not done:', failed, saved, design);
+  if (r.html) modal({ title: `Lined up ${plural(saved.length, 'face')}`, body: r.html, actions: [...r.actions, { label: 'OK', kind: 'primary' }] });
+}
+// `photo`: what's kept with it for the problem report (render.js photoIssues): its size and whether it's still poor.
+async function photoJpeg(img, enhance) {
+  const c = await keptCanvas(img), { enhanced, poor } = enhanceCanvas(c, enhance), dataUrl = c.toDataURL('image/jpeg', 0.92);
+  return { dataUrl, img: await loadImage(dataUrl), enhanced, photo: { w: c.width, h: c.height, poor } };
+}
+// The photo at the size it's kept, on white: JPEG has no transparency, so cut-out photos get white, not black.
+async function keptCanvas(img) {
+  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
-  g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height);   // JPEG has no transparency: cut-out photos get white, not black
-  g.drawImage(img, 0, 0, c.width, c.height);
-  const dataUrl = c.toDataURL('image/jpeg', 0.92);
-  const out = await loadImage(dataUrl);
-  return { dataUrl, img: out, name: file.name };
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (k < 1) await shrinkInto(img, c); else g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'destination-over'; g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'source-over';
+  return c;
+}
+// Enhances the photo when asked (as photoJpeg's `enhance`); whether it did, and whether it's still clearly poor as kept.
+function enhanceCanvas(c, enhance) {
+  const g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height), check = photoCheck(d.data, c.width, c.height);
+  if (!(enhance === true || (enhance === 'needed' && check.off))) return { enhanced: false, poor: check.poor };
+  enhancePixels(d.data, c.width, c.height); g.putImageData(d, 0, 0);
+  return { enhanced: true, poor: photoCheck(d.data, c.width, c.height).poor };
 }
 
 VIEWS.clients = {
@@ -447,7 +518,7 @@ VIEWS.clients = {
   mount(el, top) {
     top.innerHTML = `<button class="btn primary" id="cNew">${ICON.plus}New client</button>`;
     $('#cNew').onclick = () => clientModal();
-    el.innerHTML = `<div class="stack" style="gap:16px"><div class="row"><input class="input" id="cQ" placeholder="Search clients" value="${esc(this.q)}" style="max-width:360px" aria-label="Search clients"></div><div id="cGrid"></div></div>`;
+    el.innerHTML = `<div class="stack"><div class="row"><input class="input" id="cQ" placeholder="Search clients" value="${esc(this.q)}" style="max-width:360px" aria-label="Search clients"></div><div id="cGrid"></div></div>`;
     $('#cQ').oninput = e => { this.q = e.target.value; this.paint(); };
     this.paint();
   },
@@ -456,7 +527,7 @@ VIEWS.clients = {
     const q = this.q.toLowerCase().trim();
     const list = S.clients.filter(c => !q || `${c.name} ${c.contactName} ${c.contactEmail}`.toLowerCase().includes(q));
     if (!S.clients.length) {
-      g.innerHTML = `<div class="card"><div class="empty">${ICON.clients}<b>No clients yet</b><div class="row" style="justify-content:center;margin-top:16px"><button class="btn primary" id="cFirst">${ICON.plus}Create your first client</button></div></div></div>`;
+      g.innerHTML = `<div class="card"><div class="empty">${ICON.clients}<b>No clients yet</b><div class="row"><button class="btn primary" id="cFirst">${ICON.plus}Create your first client</button></div></div></div>`;
       $('#cFirst').onclick = () => clientModal(); return;
     }
     g.innerHTML = list.length ? `<div class="cgrid">${list.map(c => `<a class="ccard card" href="#/clients/${c.id}/people">
@@ -472,13 +543,13 @@ function clientModal(existing) {
   const c = existing || {};
 
   modal({ title: existing ? 'Edit client' : 'New client', wide: false,
-    body: `<div class="stack" style="gap:14px">
+    body: `<div class="stack">
       <label class="f">Client name<input class="input" id="mName" value="${esc(c.name || '')}" autocomplete="off" placeholder="Company or organisation name"></label>
       <div class="grid2"><label class="f">Contact name<input class="input" id="mContact" value="${esc(c.contactName || '')}"></label><label class="f">Phone<input class="input" id="mPhone" value="${esc(c.contactPhone || '')}"></label></div>
       <label class="f">Email<input class="input" id="mEmail" type="email" value="${esc(c.contactEmail || '')}"></label>
       <label class="f">Notes<textarea class="input" id="mNotes" rows="3">${esc(c.notes || '')}</textarea></label>
       ${existing || !S.designs.length ? '' : `<label class="f">Card template<select class="input" id="mTpl">${S.designs.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select></label>
-      <label class="check" style="border:0;padding:0"><input type="checkbox" id="mCopy" checked style="width:18px;height:18px;accent-color:var(--brand)"><div><b>Make a separate copy for this client</b><span>Changes to their card won't affect other clients.</span></div></label>`}</div>`,
+      <label class="check bare"><input type="checkbox" id="mCopy" checked><div><b>Make a separate copy for this client</b><span>Changes to their card won't affect other clients.</span></div></label>`}</div>`,
     actions: [{ label: 'Cancel' }, { label: existing ? 'Save' : 'Create client', kind: 'primary', onClick: async (m) => {
       const body = { name: $('#mName', m).value, contactName: $('#mContact', m).value, contactPhone: $('#mPhone', m).value, contactEmail: $('#mEmail', m).value, notes: $('#mNotes', m).value };
       if (!body.name.trim()) { toast('Enter the client\'s name', 'err'); $('#mName', m).focus(); return false; }
@@ -499,7 +570,7 @@ VIEWS.client = {
   mount(el, top) {
     const [, id, tab = 'people'] = parts(); const c = clientById(id);
     if (!c) { el.innerHTML = `<div class="card"><div class="empty"><b>Client not found</b><a href="#/clients">Back to clients</a></div></div>`; return; }
-    el.innerHTML = `<div class="stack" style="gap:18px"><div class="row" style="justify-content:space-between"><a class="crumb" href="#/clients">${ICON.back}All clients</a>
+    el.innerHTML = `<div class="stack"><div class="row" style="justify-content:space-between"><a class="crumb" href="#/clients">${ICON.back}All clients</a>
       <div class="seg" role="tablist">${CLIENT_TABS.filter(([k]) => k !== 'templates' || isAdmin()).map(([k, l]) => `<a role="tab" class="${tab === k ? 'on' : ''}" aria-selected="${tab === k}" href="#/clients/${c.id}/${k}">${l}${k === 'people' ? ` <span class="cnt num">${c.people}</span>` : ''}</a>`).join('')}</div></div><div id="ctab"></div></div>`;
     const root = $('#ctab');
     if (tab === 'people') peopleTab.mount(root, top, c);
@@ -554,8 +625,8 @@ const peopleTab = {
     top.innerHTML = `<a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download>${ICON.download}Blank CSV template</a><a class="btn" href="/api/clients/${c.id}/people.csv" download title="Everyone in this client, with all their details (photos not included)">${ICON.download}Export people</a><span class="vr"></span>
       <button class="btn" id="pImport">${ICON.upload}Import from CSV</button><button class="btn" id="pUpdate" disabled>${ICON.retry}Bulk update</button><span class="vr"></span><button class="btn primary" id="pAdd">${ICON.plus}Add person</button>`;
     $('#pAdd').onclick = () => personModal(c, null);
-    $('#pImport').onclick = () => { st.importing = { people: [], files: [], types: allTypes(), csvName: '', warning: '' }; importer.mount(root, top, c); };
-    $('#pUpdate').onclick = () => { st.updating = { rows: [], csvName: '', warning: '', files: [], types: allTypes(), excluded: new Set(), urls: new Map(), plan: { entries: [], unusedFiles: [] } }; updater.mount(root, top, c); };
+    $('#pImport').onclick = () => { st.importing = { people: [], files: [], types: allTypes(), csvName: '', warning: '', enhance: !!S.config.enhancePhotos }; importer.mount(root, top, c); };
+    $('#pUpdate').onclick = () => { st.updating = { rows: [], csvName: '', warning: '', files: [], types: allTypes(), enhance: !!S.config.enhancePhotos, excluded: new Set(), urls: new Map(), plan: { entries: [], unusedFiles: [] } }; updater.mount(root, top, c); };
     root.innerHTML = `<div class="card" id="pCard"><div class="empty">Loading people…</div></div>`;
     try { st.rows = await api('GET', `/api/clients/${c.id}/people`); } catch (e) { toast(e.message, 'err'); return; }
     $('#pUpdate')?.removeAttribute('disabled');   // it matches against the people just loaded
@@ -565,17 +636,19 @@ const peopleTab = {
   paint() {
     const st = this.st, c = this.client, box = $('#pCard'); if (!box) return;
     if (!st.rows.length) {
-      box.innerHTML = `<div class="empty">${ICON.card}<b>No people yet</b><div class="row" style="justify-content:center;margin-top:16px"><button class="btn" id="pE1">${ICON.upload}Import from CSV</button><button class="btn primary" id="pE2">${ICON.plus}Add person</button></div></div>`;
+      box.innerHTML = `<div class="empty">${ICON.card}<b>No people yet</b><div class="row"><button class="btn" id="pE1">${ICON.upload}Import from CSV</button><button class="btn primary" id="pE2">${ICON.plus}Add person</button></div></div>`;
       $('#pE1').onclick = () => $('#pImport').click(); $('#pE2').onclick = () => personModal(c, null); return;
     }
     const q = st.q.toLowerCase().trim();
     const cols = clientFields(c).filter(f => !['firstName', 'lastName', 'address', 'photo'].includes(f));
-    const SHOW = { all: ['All people', () => true], active: ['Active cards', p => p.cardStatus === 'active'], lost: ['Lost or stolen', p => p.cardStatus === 'lost'],
+    const d = S.designs.find(x => x.id === st.designId); const hasBack = printsBack(d); const noTpl = !d;
+    const SHOW = { all: ['All people', () => true], check: ['Needs checking', p => photoIssues(p, d).length > 0], active: ['Active cards', p => p.cardStatus === 'active'], lost: ['Lost or stolen', p => p.cardStatus === 'lost'],
       returned: ['Returned', p => p.cardStatus === 'returned'], expiring: ['Expired or expiring', p => /Expire/.test((cardState(p) || [])[1] || '')], never: ['Never printed', p => !p.printCount] };
     const shown = (SHOW[st.show] || SHOW.all)[1];
     const list = st.rows.filter(p => shown(p) && (!q || [p.firstName, p.lastName, ...cols.map(f => pv(p, f))].join(' ').toLowerCase().includes(q)));
     for (const id of [...st.sel]) if (!st.rows.some(p => p.id === id)) st.sel.delete(id);
-    const d = S.designs.find(x => x.id === st.designId); const hasBack = printsBack(d); const noTpl = !d;
+    // Line up faces needs each photo's face: photos saved while it was off (or before the face finder could start) are found here.
+    const faceFit = !!S.config.alignFaces && !!photoBox(d), unlined = faceFit ? st.rows.filter(p => p.hasPhoto && p.adj?.face === undefined) : [];
     if (!hasBack) st.sides = 'front';
     const n = st.sel.size;
     const y = $('.tbl-wrap', box)?.scrollTop;   // repainting must not jump back to the top
@@ -583,22 +656,24 @@ const peopleTab = {
         <label class="f" style="flex:1 1 200px">Search<input class="input" id="pQ" placeholder="Name${cols.length ? ', ' + esc(cols.map(f => fieldLabel(f).toLowerCase()).join(', ')) : ''}" value="${esc(st.q)}"></label>
         <label class="f" style="flex:0 1 170px">Show<select class="input" id="pShow">${Object.entries(SHOW).map(([k, [l]]) => `<option value="${k}" ${st.show === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${noTpl ? '' : `<label class="f" style="flex:1 1 180px">Card template<select class="input" id="pDesign">${designOptionsFor(c.id, st.designId)}</select></label>`}
-        ${hasBack ? `<div class="f" style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto"><span style="font-size:12.5px;font-weight:700;color:var(--ink-2)">Sides</span>${sidesSeg('pSides', st.sides, hasBack)}</div>` : ''}
+        ${hasBack ? `<div class="f" style="flex:0 0 auto"><span>Sides</span>${sidesSeg('pSides', st.sides, hasBack)}</div>` : ''}
         <span class="sp"></span>
+        ${unlined.length ? `<button class="btn" id="pFaces">${ICON.image}Line up ${plural(unlined.length, 'face')}</button>` : ''}
         ${n ? `<button class="btn danger" id="pDel">${ICON.trash}Delete ${n}</button>${noTpl ? '' : `<button class="btn" id="pProof" title="A page of these cards at actual size, to print or save as PDF for the client to check">${ICON.doc}Proof sheet</button>`}` : ''}
         ${noTpl ? (isAdmin() ? `<a class="btn primary lg" href="#/clients/${c.id}/templates">${ICON.plus}Add a card template</a>` : '<span class="chip warn">No card template yet</span>')
           : `<button class="btn primary lg" id="pPrint" ${n ? '' : 'disabled'}>${ICON.print}${n ? `Print ${plural(n, 'card')}` : 'Select people to print'}</button>`}</div>
       <div class="tbl-wrap" style="max-height:64vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="pAll" aria-label="Select all" ${list.length && list.every(p => st.sel.has(p.id)) ? 'checked' : ''}></th><th>Photo</th><th>Name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Last printed</th><th>Cards</th><th></th></tr></thead>
       <tbody>${list.map(p => `<tr data-id="${p.id}" class="${st.sel.has(p.id) ? 'sel' : ''}"><td><input type="checkbox" data-sel ${st.sel.has(p.id) ? 'checked' : ''} aria-label="Select ${esc(p.firstName)} ${esc(p.lastName)}"></td>
         <td>${p.hasPhoto ? `<img class="thumb" src="${photoUrl(p)}" alt="" loading="lazy">` : `<div class="thumb noph">${esc(initials(p.firstName + ' ' + p.lastName))}</div>`}</td>
-        <td><div class="nm">${esc(p.firstName)} ${esc(p.lastName)}</div>${p.hasPhoto ? '' : '<span class="chip warn" style="margin-top:4px">No photo</span>'}${cardState(p) ? ` <span class="chip ${cardState(p)[0]}" style="margin-top:4px">${cardState(p)[1]}</span>` : ''}</td>
+        <td><div class="nm">${esc(p.firstName)} ${esc(p.lastName)}</div>${photoIssues(p, d).map(k => `<span class="chip warn">${PHOTO_ISSUES[k]}</span>`).join(' ')}${cardState(p) ? ` <span class="chip ${cardState(p)[0]}">${cardState(p)[1]}</span>` : ''}</td>
         ${cols.map(f => `<td class="muted">${esc(pv(p, f)) || '—'}</td>`).join('')}<td class="muted num">${p.lastPrintedAt ? fmtDateTime(p.lastPrintedAt) : 'Never'}</td><td class="num muted">${p.printCount || 0}</td>
         <td><div class="acts"><button class="btn sm" data-print>${ICON.print}Print</button><button class="btn sm" data-edit>${ICON.edit}Edit</button></div></td></tr>`).join('')}</tbody></table></div>
-      <div class="hint" style="padding:12px 20px">${plural(st.rows.length, 'person')}${q ? ` · ${list.length} shown` : ''}${n ? ` · ${n} selected` : ''}</div>`;
+      <div class="hint tbl-foot">${plural(st.rows.length, 'person')}${q || st.show !== 'all' ? ` · ${list.length} shown` : ''}${n ? ` · ${n} selected` : ''}</div>`;
     if (y) $('.tbl-wrap', box).scrollTop = y;
     $('#pQ').oninput = e => { st.q = e.target.value; const pos = e.target.selectionStart; this.paint(); const i = $('#pQ'); i.focus(); i.setSelectionRange(pos, pos); };
     $('#pDesign') && ($('#pDesign').onchange = e => { st.designId = e.target.value; this.paint(); });
     $('#pShow').onchange = e => { st.show = e.target.value; this.paint(); };
+    $('#pFaces') && ($('#pFaces').onclick = () => lineUpFaces(c, unlined, d));
     $('#pProof') && ($('#pProof').onclick = () => proofSheet(c, st.rows.filter(p => st.sel.has(p.id)), S.designs.find(x => x.id === st.designId) || clientDefaultDesign(c), st.sides));
     if ($('#pSides')) bindSeg('pSides', s => { st.sides = s; });
     $('#pAll').onchange = e => { list.forEach(p => e.target.checked ? st.sel.add(p.id) : st.sel.delete(p.id)); this.paint(); };
@@ -628,19 +703,20 @@ function personModal(c, p) {
   const tab = peopleTab.st;
   const fields = clientFields(c).filter(f => !['firstName', 'lastName'].includes(f));
   const st = { firstName: p?.firstName || '', lastName: p?.lastName || '', staffId: p?.staffId || '', position: p?.position || '', title: p?.title || '', address: p?.address || '', notes: p?.notes || '', adj: { zoom: 1, ox: 0, oy: 0, ...(p?.adj || {}) }, extra: { ...(p?.extra || {}) },
-    img: null, photoData: undefined, photoName: p?.photoName || '', hasPhoto: !!p?.hasPhoto };
+    img: null, photoData: undefined, photoName: p?.photoName || '', hasPhoto: !!p?.hasPhoto,
+    src: null, fresh: false, enhance: false };   // src: the photo before Enhance; fresh: chosen now, not the saved one
   const d = S.designs.find(x => x.id === tab.designId) || clientDefaultDesign(c);
   const m = modal({ title: p ? `${p.firstName} ${p.lastName}`.trim() || 'Edit person' : 'Add person', wide: true,
-    body: `<div class="pm"><div class="stack" style="gap:14px">
+    body: `<div class="pm"><div class="stack">
       <div class="grid2"><label class="f">First name<input class="input" id="eFirst" value="${esc(st.firstName)}" autocomplete="off"></label><label class="f">Last name<input class="input" id="eLast" value="${esc(st.lastName)}" autocomplete="off"></label></div>
       ${fields.length ? `<div class="grid2">${fields.map(f => f === 'address' ? `<label class="f" style="grid-column:1 / -1">Address<textarea class="input" data-pf="address" rows="2">${esc(st.address)}</textarea></label>` : !PERSON_FIELDS.includes(f) ? customInput(f, st.extra[f]) : `<label class="f">${fieldLabel(f)}<input class="input" data-pf="${f}" value="${esc(st[f])}" autocomplete="off"></label>`).join('')}</div>` : ''}
       <div class="drop" id="eDrop" tabindex="0" role="button" aria-label="Choose ID photo" ${photoSpecLine(d) ? 'aria-describedby="eSpec"' : ''}><div class="ph" id="ePh">${p?.hasPhoto ? `<img src="${photoUrl(p)}" alt="">` : ICON.image}</div><div><b id="eName">${st.hasPhoto ? esc(st.photoName || 'Photo saved') : 'Drop a photo here or click to choose'}</b>${photoSpecLine(d) ? `<span class="num" id="eSpec">At least ${photoSpecLine(d)}</span>` : ''}</div></div>
       <input type="file" id="eFile" accept="${PHOTO_ACCEPT}" hidden>
       <label class="f">Zoom<input type="range" id="eZoom" min="1" max="4" step="0.01" value="${st.adj.zoom}"></label>
-      <div class="row"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm" id="eWhole" ${st.hasPhoto ? '' : 'hidden'}>${ICON.image}Whole photo</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
+      <div class="row sm"><button class="btn sm" id="eReset">${ICON.retry}Reset position</button><button class="btn sm" id="eWhole" ${st.hasPhoto ? '' : 'hidden'}>${ICON.image}Whole photo</button><button class="btn sm" id="eEnh" ${st.hasPhoto ? '' : 'hidden'}>${ICON.wand}Enhance</button><button class="btn sm danger" id="eRemove" ${st.hasPhoto ? '' : 'hidden'}>${ICON.trash}Remove photo</button></div>
       <label class="f">Notes<textarea class="input" id="eNotes" rows="2">${esc(st.notes)}</textarea></label>
-      ${p ? `<div class="f"><span>Card</span><div class="row" style="gap:10px;flex-wrap:wrap"><select class="input" id="eStatus" style="max-width:190px">${[['active', 'Active'], ['lost', 'Lost or stolen'], ['returned', 'Returned']].map(([k, l]) => `<option value="${k}" ${p.cardStatus === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <span class="hint">${p.printCount ? `${plural(p.printCount, 'card')} printed, last ${fmtDateTime(p.lastPrintedAt)}` : 'No card printed yet'}</span></div><div id="eHist" class="stack" style="gap:4px"></div></div>` : ''}</div>
+      ${p ? `<div class="f"><span>Card</span><div class="row"><select class="input" id="eStatus" style="max-width:190px">${[['active', 'Active'], ['lost', 'Lost or stolen'], ['returned', 'Returned']].map(([k, l]) => `<option value="${k}" ${p.cardStatus === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <span class="hint">${p.printCount ? `${plural(p.printCount, 'card')} printed, last ${fmtDateTime(p.lastPrintedAt)}` : 'No card printed yet'}</span></div><div id="eHist" class="stack sm"></div></div>` : ''}</div>
       ${d ? `<div class="cardview"><span class="lbl">${esc(d.name)}</span><canvas id="eCv" style="width:${d.card.w > d.card.h ? 330 : 240}px"></canvas></div>` : ''}</div>`,
     actions: [
       ...(p ? [{ label: 'Delete', kind: 'danger', onClick: async () => { if (!(await confirmBox('Delete this person?', 'Their details and photo are removed.', 'Delete', 'danger'))) return false; await api('POST', '/api/people/delete', { ids: [p.id] }); toast('Deleted'); peopleTab.reload(); } }] : []),
@@ -651,7 +727,7 @@ function personModal(c, p) {
   const draw = () => cv && drawCard(cv, d, 'front', { ...st, ...st.extra, firstName: st.firstName || 'First', lastName: st.lastName || 'Last name', photo: st.img, adj: st.adj });
   // The zoom slider runs from the whole photo showing up to 4 times the template's starting size.
   const zoomRange = () => { const b = photoBox(d); const z = $('#eZoom', el); if (st.img && b) { z.min = photoGeometry(st.img, b, st.adj).minZoom.toFixed(3); z.value = st.adj.zoom; } };
-  (async () => { if (p?.hasPhoto) { st.img = await loadImage(photoUrl(p)); zoomRange(); } draw(); })();
+  (async () => { if (p?.hasPhoto) { st.img = st.src = await loadImage(photoUrl(p)); zoomRange(); } draw(); })();
   $('#eFirst', el).oninput = e => { st.firstName = e.target.value; draw(); };
   $('#eLast', el).oninput = e => { st.lastName = e.target.value; draw(); };
   $$('[data-pf]', el).forEach(i => i.oninput = e => { st[i.dataset.pf] = e.target.value; draw(); });
@@ -672,7 +748,7 @@ function personModal(c, p) {
   }
   const pick = async (f) => {
     if (!f) return;
-    try { const r = await shrinkPhoto(f); Object.assign(st, { img: r.img, photoData: r.dataUrl, photoName: r.name, hasPhoto: true, adj: { zoom: 1, ox: 0, oy: 0 } }); $('#ePh', el).innerHTML = `<img src="${r.dataUrl}" alt="">`; $('#eName', el).textContent = r.name; zoomRange(); $('#eRemove', el).hidden = false; $('#eWhole', el).hidden = false; draw(); }
+    try { const r = await shrinkPhoto(f, st.enhance || (S.config.enhancePhotos && 'needed')); st.enhance = r.enhanced; enhLabel(); Object.assign(st, { img: r.img, src: r.src, fresh: true, photoData: r.dataUrl, photoName: r.name, hasPhoto: true, adj: { zoom: 1, ox: 0, oy: 0, face: r.face, photo: r.photo } }); $('#ePh', el).innerHTML = `<img src="${r.dataUrl}" alt="">`; $('#eName', el).textContent = r.name; zoomRange(); $('#eRemove', el).hidden = false; $('#eWhole', el).hidden = false; $('#eEnh', el).hidden = false; draw(); }
     catch (e) { toast(e.message, 'err'); }
   };
   const drop = $('#eDrop', el);
@@ -681,10 +757,22 @@ function personModal(c, p) {
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); }; drop.ondragleave = () => drop.classList.remove('over');
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
   $('#eZoom', el).oninput = e => { st.adj.zoom = +e.target.value; draw(); };
-  $('#eReset', el).onclick = () => { st.adj = { zoom: 1, ox: 0, oy: 0 }; $('#eZoom', el).value = 1; draw(); };
-  $('#eWhole', el).onclick = () => { const b = photoBox(d); if (!st.img || !b) return; st.adj = { zoom: photoGeometry(st.img, b, {}).minZoom, ox: 0, oy: 0 }; $('#eZoom', el).value = st.adj.zoom; draw(); };
-  $('#eRemove', el).onclick = () => { Object.assign(st, { img: null, photoData: null, photoName: '', hasPhoto: false }); $('#ePh', el).innerHTML = ICON.image; $('#eName', el).textContent = 'Drop a photo here or click to choose'; $('#eRemove', el).hidden = true; $('#eWhole', el).hidden = true; draw(); };
-  enablePhotoPan(cv, () => ({ img: st.img, adj: st.adj, design: d }), (z) => { if (z) $('#eZoom', el).value = st.adj.zoom; draw(); });
+  $('#eReset', el).onclick = () => { st.adj = { ...st.adj, zoom: 1, ox: 0, oy: 0 }; $('#eZoom', el).value = 1; draw(); };   // keeps the face found
+  $('#eWhole', el).onclick = () => { const b = photoBox(d); if (!st.img || !b) return; st.adj = { ...st.adj, zoom: photoGeometry(st.img, b, { face: st.adj.face }).minZoom, ox: 0, oy: 0 }; $('#eZoom', el).value = st.adj.zoom; draw(); };
+  $('#eRemove', el).onclick = () => { Object.assign(st, { img: null, src: null, photoData: null, photoName: '', hasPhoto: false, enhance: false }); $('#ePh', el).innerHTML = ICON.image; $('#eName', el).textContent = 'Drop a photo here or click to choose'; $('#eRemove', el).hidden = true; $('#eWhole', el).hidden = true; $('#eEnh', el).hidden = true; enhLabel(); draw(); };
+  // Enhance (render.js enhancePixels) makes the photo again from the one before; undone, a saved photo is left as it was.
+  const enhLabel = () => { $('#eEnh', el).innerHTML = st.enhance ? `${ICON.undo}Undo enhance` : `${ICON.wand}Enhance`; };
+  $('#eEnh', el).onclick = async (e) => {
+    if (!st.src) return;
+    e.currentTarget.disabled = true; st.enhance = !st.enhance; enhLabel();
+    try {
+      if (st.enhance || st.fresh) { const r = await photoJpeg(st.src, st.enhance); Object.assign(st, { img: r.img, photoData: r.dataUrl }); st.adj.photo = r.photo; }
+      else { Object.assign(st, { img: st.src, photoData: undefined }); st.adj.photo = p?.adj?.photo; }   // the saved photo, as it was
+      $('#ePh', el).innerHTML = `<img src="${st.photoData || photoUrl(p)}" alt="">`; draw();
+    } catch (err) { toast(err.message, 'err'); }
+    finally { $('#eEnh', el).disabled = false; }
+  };
+  if (cv) enablePhotoPan(cv, () => ({ img: st.img, adj: st.adj, design: d }), (z) => { if (z) $('#eZoom', el).value = st.adj.zoom; draw(); });   // no card preview without a template
   setTimeout(() => $('#eFirst', el).focus(), 30);
   async function save(andPrint) {
     if (!st.firstName.trim() && !st.lastName.trim()) { toast('Enter a name', 'err'); $('#eFirst', el).focus(); return false; }
@@ -722,7 +810,7 @@ async function queuePeople(c, people, { designId, sides }) {
   if (short.length && !(await confirmBox(`Enough supplies for ${plural(people.length, 'card')}?`, short.join(' '), 'Print anyway'))) return;
   const one = people.length === 1;
   let cancelled = false;
-  const m = one ? null : modal({ title: `Preparing ${plural(people.length, 'card')}`, text: `${c.name} · ${d.name} · ${SIDES[sides] || 'Front only'}`, body: `<div class="stack" style="gap:10px"><div class="progress"><i id="pBar" style="width:0%"></i></div><div class="row"><b id="pMsg" class="num">Starting…</b><span class="sp"></span><span class="muted num" id="pPct">0%</span></div></div>`, actions: [{ label: 'Stop', kind: 'danger', onClick: () => { cancelled = true; return false; } }] });
+  const m = one ? null : modal({ title: `Preparing ${plural(people.length, 'card')}`, text: `${c.name} · ${d.name} · ${SIDES[sides] || 'Front only'}`, body: `<div class="stack sm"><div class="progress"><i id="pBar" style="width:0%"></i></div><div class="row"><b id="pMsg" class="num">Starting…</b><span class="sp"></span><span class="muted num" id="pPct">0%</span></div></div>`, actions: [{ label: 'Stop', kind: 'danger', onClick: () => { cancelled = true; return false; } }] });
   if (m) m.el.dataset.locked = '1';
   try {
     const list = [];
@@ -741,6 +829,8 @@ async function queuePeople(c, people, { designId, sides }) {
 async function csvText(f) { const bytes = await f.arrayBuffer(); try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { return new TextDecoder('windows-1252').decode(bytes); } }
 // The photo step: Choose folder / Choose files, then a tick box per picture type with how many were found. `st.files` keeps every
 // supported file chosen; only the ticked types (`st.types`, all of them to start) are matched, so a tick changes the matches at once.
+// Enhance photos that need it (`st.enhance`, on to start when it's on in Settings) is applied as each photo is saved, and shown in the thumbnails.
+const PHOTO_PROBLEM = { several: 'More than one photo', shared: 'Shared photo' };   // csv.js photosByName
 const allTypes = () => new Set(PHOTO_FORMATS.map(f => f.key));
 const tickedFiles = (st) => st.files.filter(f => st.types.has(photoFormat(f)));
 const photosChosen = (st) => { const n = tickedFiles(st).length; return n === st.files.length ? `${plural(n, 'photo')} chosen` : `${n} of ${plural(st.files.length, 'photo')} ticked`; };
@@ -748,7 +838,8 @@ function photoPicker(st, primary) {
   const n = {}; for (const f of st.files) n[photoFormat(f)] = (n[photoFormat(f)] || 0) + 1;
   return `<div class="row"><button class="btn ${primary ? 'primary' : ''}" data-pick="folder">${ICON.folder}Choose folder</button><button class="btn" data-pick="files">${ICON.image}Choose files</button>
     <input type="file" data-in="folder" webkitdirectory multiple hidden><input type="file" data-in="files" accept="${PHOTO_ACCEPT}" multiple hidden></div>
-    <div class="types">${PHOTO_FORMATS.map(f => `<label class="${st.files.length && !n[f.key] ? 'dim' : ''}"><input type="checkbox" data-type="${f.key}" ${st.types.has(f.key) ? 'checked' : ''}>${f.label}${st.files.length ? `<span class="num">${n[f.key] || 0}</span>` : ''}</label>`).join('')}</div>`;
+    <div class="types">${PHOTO_FORMATS.map(f => `<label class="${st.files.length && !n[f.key] ? 'dim' : ''}"><input type="checkbox" data-type="${f.key}" ${st.types.has(f.key) ? 'checked' : ''}>${f.label}${st.files.length ? `<span class="num">${n[f.key] || 0}</span>` : ''}</label>`).join('')}</div>
+    <div class="types"><label><input type="checkbox" data-enhance ${st.enhance ? 'checked' : ''}>Enhance photos that need it</label></div>`;
 }
 function bindPhotoPicker(box, st, onChange) {
   $$('[data-pick]', box).forEach(b => b.onclick = () => $(`[data-in="${b.dataset.pick}"]`, box).click());
@@ -760,22 +851,51 @@ function bindPhotoPicker(box, st, onChange) {
     onChange();
   });
   $$('[data-type]', box).forEach(i => i.onchange = e => { st.types[e.target.checked ? 'add' : 'delete'](i.dataset.type); onChange(); });
+  $('[data-enhance]', box).onchange = e => { st.enhance = e.target.checked; onChange(); };
 }
 // Review-table thumbnails. An <img> of a HEIC or TIFF file shows nothing, so those start as a type label and are opened
 // (openImage, with its decoder) only when their row scrolls into view, once per file; the other types the window shows as they are.
-const thumbs = new WeakMap();   // file → Promise of a small JPEG data URL (null when it can't be opened)
-async function smallThumb(file) {
-  const img = await openImage(file).catch(() => null); if (!img) return null;
-  const k = Math.min(1, 96 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.8);
+// With Enhance photos that need it ticked, every thumbnail is made this way, as the photo will be kept: checked at its
+// kept size, enhanced if it's off (and outlined, "Enhanced"). Thumbnails are made one at a time, so a long list never
+// opens dozens of big photos at once.
+const thumbs = [new WeakMap(), new WeakMap()];   // [as it is, enhance if needed]: file → Promise of { src, enhanced } (src null when it can't be opened)
+let thumbLine = Promise.resolve();
+async function smallThumb(file, enhance) {
+  const img = await openImage(file); if (!img) return { src: null };
+  const from = enhance ? await keptCanvas(img) : img, enhanced = enhance && enhanceCanvas(from, 'needed').enhanced;
+  const fw = from.naturalWidth || from.width, fh = from.naturalHeight || from.height, k = Math.min(1, 96 / Math.max(fw, fh));
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(fw * k)); c.height = Math.max(1, Math.round(fh * k));
+  const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(from, 0, 0, c.width, c.height);
+  return { src: c.toDataURL('image/jpeg', 0.8), enhanced };
 }
 const thumbIO = new IntersectionObserver(hits => hits.forEach(h => {
-  if (!h.isIntersecting) return; thumbIO.unobserve(h.target); const f = h.target._file;
-  if (!thumbs.has(f)) thumbs.set(f, smallThumb(f));
-  thumbs.get(f).then(src => { if (src && h.target.isConnected) h.target.outerHTML = `<img class="thumb" src="${src}" alt="">`; });
+  if (!h.isIntersecting) return; thumbIO.unobserve(h.target); const f = h.target._file, enhance = 'enh' in h.target.dataset, cache = thumbs[+enhance];
+  if (!cache.has(f)) cache.set(f, thumbLine = thumbLine.then(() => smallThumb(f, enhance).catch(() => ({ src: null }))));
+  cache.get(f).then(t => { if (t.src && h.target.isConnected) h.target.outerHTML = `<img class="thumb${t.enhanced ? ' enh' : ''}" src="${t.src}" alt="" ${t.enhanced ? 'title="Enhanced"' : ''}>`; });
 }));
-const thumbHtml = (file, urlOf) => !file ? '<div class="thumb"></div>' : showsAsIs(file) ? `<img class="thumb" src="${urlOf(file)}" alt="" loading="lazy">` : `<div class="thumb noph ty" data-lazy>${PHOTO_FORMATS.find(f => f.key === photoFormat(file)).label}</div>`;
+const thumbHtml = (file, urlOf, enhance) => !file ? '<div class="thumb"></div>' : !enhance && showsAsIs(file) ? `<img class="thumb" src="${urlOf(file)}" alt="" loading="lazy">` : `<div class="thumb noph ty" data-lazy ${enhance ? 'data-enh' : ''}>${PHOTO_FORMATS.find(f => f.key === photoFormat(file)).label}</div>`;
 const watchThumbs = (box, fileOf) => $$('[data-lazy]', box).forEach(el => { el._file = fileOf(el.closest('tr')); thumbIO.observe(el); });
+// The progress window for Import from CSV and Bulk update. People are done one at a time, each named before it starts,
+// so a long list works through steadily and the PC stays usable. `show(i, who, note)` before person i (from 0) lets the
+// window draw it before that person's photo work starts; while the window is hidden or minimised it draws nothing and
+// its timers slow to one a second, so it carries straight on. `stopped` once Stop is chosen.
+const drawn = () => document.hidden ? Promise.resolve() : Promise.race([new Promise(r => requestAnimationFrame(() => setTimeout(r))), new Promise(r => setTimeout(r, 100))]);
+function progressBox(title, verb, total) {
+  let stopped = false;
+  const m = modal({ title, body: `<div class="stack sm"><div class="progress"><i data-bar style="width:0%"></i></div><div class="row"><b data-msg class="num">Starting…</b><span class="sp"></span><span class="muted num" data-pct>0%</span></div><span class="hint num" data-note></span></div>`,
+    actions: [{ label: 'Stop', kind: 'danger', onClick: () => { stopped = true; return false; } }] });
+  m.el.dataset.locked = '1';
+  return {
+    get stopped() { return stopped; },
+    async show(i, who, note = '') {
+      $('[data-bar]', m.el).style.width = `${(i / total) * 100}%`; $('[data-pct]', m.el).textContent = `${Math.round((i / total) * 100)}%`;
+      $('[data-msg]', m.el).textContent = `${verb} ${i + 1} of ${total}: ${who}`; $('[data-note]', m.el).textContent = note;
+      await drawn();
+    },
+    close: () => m.close(),
+  };
+}
+const photoNames = (file, files, fallback = '') => esc(file ? file.name : files?.length ? files.map(f => f.name).join(' · ') : fallback) || '—';
 
 // ---------------- import people from CSV + photos into a client ----------------
 const importer = {
@@ -784,10 +904,10 @@ const importer = {
     top.innerHTML = `<button class="btn" id="iCancel">${ICON.x}Cancel import</button>`;
     $('#iCancel').onclick = () => { this.release(); peopleTab.st.importing = null; peopleTab.mount(root, top, c); };
     const matched = im.people.filter(p => p.file).length;
-    root.innerHTML = `<div class="stack" style="gap:20px"><div class="steps">
+    root.innerHTML = `<div class="stack"><div class="steps">
       <div class="card step"><span class="n">1</span><h3>Fill in the template</h3>
         <div class="code">${['First Name', 'Last Name', ...clientFields(c).filter(f => !['firstName', 'lastName'].includes(f)).map(f => ({ staffId: 'Staff ID Number', position: 'Position', title: 'Title', address: 'Address' })[f] || esc(fieldLabel(f)))].join(',')}</div>
-        <a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download style="align-self:flex-start">${ICON.download}Download blank CSV</a></div>
+        <a class="btn" href="/api/bulk-template.csv?clientId=${c.id}" download>${ICON.download}Download blank CSV</a></div>
       <div class="card step ${im.people.length ? 'done' : ''}"><span class="n">${im.people.length ? '✓' : '2'}</span><h3>Upload the completed CSV</h3>
         <div class="row"><button class="btn ${im.people.length ? '' : 'primary'}" id="iCsvBtn">${ICON.upload}${im.people.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="iCsv" accept=".csv,text/csv" hidden></div>
         ${im.people.length ? `<span class="st">${esc(im.csvName)}: ${plural(im.people.length, 'person')}</span>` : ''}${im.warning ? `<span class="st warn">${esc(im.warning)}</span>` : ''}</div>
@@ -810,21 +930,21 @@ const importer = {
     this.table();
   },
   match() {
-    const im = peopleTab.st.importing; const idx = buildPhotoIndex(tickedFiles(im));
-    const found = im.people.map(p => matchPhoto(idx, p));
-    // Two people with the same name would both get that name's photo: they're imported without one, to add by hand.
-    const uses = new Map(); found.forEach((f, i) => { if (f && !im.people[i].photoFile) uses.set(f, (uses.get(f) || 0) + 1); });
-    im.people.forEach((p, i) => {
-      p.nameTwice = !p.photoFile && uses.get(found[i]) > 1;
-      const f = p.nameTwice ? null : found[i];
+    const im = peopleTab.st.importing, files = tickedFiles(im), idx = buildPhotoIndex(files);
+    // A CSV's ID Photo column names the file; anyone else gets the photo named after them (csv.js photosByName). When that's
+    // not clear (more than one photo, or one photo for two people) they're imported without one, to add by hand.
+    const named = photosByName(files, im.people.filter(p => !p.photoFile));
+    for (const p of im.people) {
+      const m = p.photoFile ? { file: matchPhoto(idx, p) } : named.get(p), f = m.file || null;
+      p.photoProblem = m.problem || null; p.photoFiles = m.files;
       if (f !== p.file) { if (p.url) URL.revokeObjectURL(p.url); p.file = f; p.url = f ? URL.createObjectURL(f) : null; }
-    });
+    }
   },
   release() { const im = peopleTab.st.importing; if (im) for (const p of im.people) if (p.url) URL.revokeObjectURL(p.url); },
   status(p) {
     if (!p.firstName && !p.lastName) return ['err', 'Name missing'];
     if (p.dup) return ['info', 'Already in client'];
-    if (p.nameTwice) return ['warn', 'Same name twice: no photo'];
+    if (p.photoProblem) return ['warn', `${PHOTO_PROBLEM[p.photoProblem]}: no photo`];
     if (!p.file) return p.photoFile ? ['err', 'Photo not found'] : ['warn', 'No photo'];
     return ['ok', 'Ready'];
   },
@@ -838,9 +958,9 @@ const importer = {
         <button class="btn primary lg" id="iGo" ${ok.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(ok.length, 'person')}</button></div>
       <div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="iAll" ${im.people.every(p => p.include) ? 'checked' : ''} aria-label="Select all"></th><th>#</th><th>Photo</th><th>First name</th><th>Last name</th>${cols.map(f => `<th>${esc(fieldLabel(f))}</th>`).join('')}<th>Photo file</th><th>Status</th></tr></thead>
       <tbody>${im.people.map(p => { const [k, l] = this.status(p); const can = k !== 'err'; return `<tr data-id="${p.id}" class="${p.include && can ? 'sel' : ''}"><td><input type="checkbox" data-inc ${p.include && can ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Include"></td><td class="num muted">${p.row}</td>
-        <td>${thumbHtml(p.file, () => p.url)}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
+        <td>${thumbHtml(p.file, () => p.url, im.enhance)}</td><td class="nm">${esc(p.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(p.lastName) || '<span class="muted">—</span>'}</td>
         ${cols.map(f => `<td class="muted" style="max-width:200px;white-space:pre-line">${esc(fieldInfo(f).type === 'date' ? formatDate(p[f], 'DD/MM/YYYY') : p[f]) || '—'}</td>`).join('')}
-        <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.file ? p.file.name : p.photoFile) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;
+        <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${photoNames(p.file, p.photoFiles, p.photoFile)}">${photoNames(p.file, p.photoFiles, p.photoFile)}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>`;
     if (y) $('.tbl-wrap', box).scrollTop = y;
     $('#iAll').onchange = e => { im.people.forEach(p => p.include = e.target.checked); this.table(); };
     $$('tbody tr', box).forEach(tr => { const p = im.people.find(x => x.id === tr.dataset.id); $('[data-inc]', tr).onchange = e => { p.include = e.target.checked; this.table(); }; });
@@ -848,31 +968,29 @@ const importer = {
     $('#iGo').onclick = () => this.run(ok);
   },
   async run(list) {
-    const c = this.client; let stop = false; const added = [], failed = [];
-    const m = modal({ title: `Importing ${plural(list.length, 'person')}`, body: `<div class="stack" style="gap:10px"><div class="progress"><i id="iBar" style="width:0%"></i></div><div class="row"><b id="iMsg" class="num">Starting…</b><span class="sp"></span><span class="muted num" id="iPct">0%</span></div></div>`, actions: [{ label: 'Stop', kind: 'danger', onClick: () => { stop = true; return false; } }] });
-    m.el.dataset.locked = '1';
-    for (let i = 0; i < list.length; i++) {
-      if (stop) break;
+    const c = this.client, enhance = peopleTab.st.importing.enhance && 'needed', added = [], failed = [];
+    const box = progressBox(`Importing ${plural(list.length, 'person')}`, 'Importing', list.length); let enhanced = 0;
+    for (let i = 0; i < list.length && !box.stopped; i++) {
       const p = list[i];
+      await box.show(i, `${p.firstName} ${p.lastName}`, enhance ? `${plural(enhanced, 'photo')} enhanced so far` : '');
       try {
-        let photo = null, name = '';
-        if (p.file) { const r = await shrinkPhoto(p.file); photo = r.dataUrl; name = p.file.name; }
-        added.push(await api('POST', `/api/clients/${c.id}/people`, { firstName: p.firstName, lastName: p.lastName, staffId: p.staffId, position: p.position, title: p.title, address: p.address, photo, photoName: name,
+        const r = p.file ? await shrinkPhoto(p.file, enhance) : null;
+        added.push(await api('POST', `/api/clients/${c.id}/people`, { firstName: p.firstName, lastName: p.lastName, staffId: p.staffId, position: p.position, title: p.title, address: p.address, photo: r?.dataUrl ?? null, photoName: r ? p.file.name : '', adj: r ? { zoom: 1, ox: 0, oy: 0, face: r.face, photo: r.photo } : undefined,
           extra: Object.fromEntries(customFields().filter(k => p[k]).map(k => [k, p[k]])) }));
+        if (r?.enhanced) enhanced++;
       } catch (e) { failed.push(`${`${p.firstName} ${p.lastName}`.trim()} (row ${p.row}): ${e.message}`); }
-      $('#iBar').style.width = `${((i + 1) / list.length) * 100}%`; $('#iMsg').textContent = `Importing ${i + 1} of ${list.length}: ${p.firstName} ${p.lastName}`; $('#iPct').textContent = `${Math.round(((i + 1) / list.length) * 100)}%`;
     }
-    m.close();
+    const stop = box.stopped; box.close();
     this.release(); peopleTab.st.importing = null;
     await peopleTab.mount(this.root, this.top, c);
     // Importing the same CSV again skips everyone already added ("Already in client"), so only these are left to redo.
-    const notes = failed.length ? `<p class="hint">Not imported:</p><ul class="hint">${failed.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
+    const r = runReport('Not imported:', failed, added, S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c)), notes = r.html;
     if (!added.length) { if (failed.length) modal({ title: 'Nobody was imported', body: notes, actions: [{ label: 'OK', kind: 'primary' }] }); return; }
-    toast(`Imported ${plural(added.length, 'person')}${stop ? ' (stopped early)' : ''}`, 'ok');
+    toast(`Imported ${plural(added.length, 'person')}${enhanced ? `, ${plural(enhanced, 'photo')} enhanced` : ''}${stop ? ' (stopped early)' : ''}`, 'ok');
     peopleTab.st.sel = new Set(added.map(p => p.id)); peopleTab.paint();
-    if (!clientDefaultDesign(c)) { if (failed.length) modal({ title: `Imported ${plural(added.length, 'person')}`, body: notes, actions: [{ label: 'OK', kind: 'primary' }] }); return; }
+    if (!clientDefaultDesign(c)) { if (notes) modal({ title: `Imported ${plural(added.length, 'person')}`, body: notes, actions: [...r.actions, { label: 'OK', kind: 'primary' }] }); return; }
     modal({ title: `Imported ${plural(added.length, 'person')}`, text: 'Print their cards now?', body: notes,
-      actions: [{ label: 'Not now' }, { label: `Print ${plural(added.length, 'card')}`, kind: 'primary', onClick: () => { setTimeout(() => printPeople(c, added, { designId: peopleTab.st.designId, sides: peopleTab.st.sides }), 30); } }] });
+      actions: [{ label: 'Not now' }, ...r.actions, { label: `Print ${plural(added.length, 'card')}`, kind: 'primary', onClick: () => { setTimeout(() => printPeople(c, added, { designId: peopleTab.st.designId, sides: peopleTab.st.sides }), 30); } }] });
   },
 };
 
@@ -880,14 +998,15 @@ const importer = {
 // Nobody is added or deleted. A CSV (First Name, Last Name and the details to change) and/or photos named after people are
 // matched to the people by name (csv.js planUpdate); each person then gets one PUT of only what changes.
 const updateFields = () => [...PERSON_FIELDS, ...customFields()].filter(f => !['firstName', 'lastName'].includes(f));
-const UPDATE_CHIP = { noChange: ['info', 'No changes'], notFound: ['err', 'Not found'], sameName: ['warn', 'Same name twice: skipped'], twice: ['warn', 'In the CSV twice: skipped'] };
+const UPDATE_CHIP = { noChange: ['info', 'No changes'], notFound: ['err', 'Not found'], sameName: ['warn', 'Same name twice: skipped'], twice: ['warn', 'In the CSV twice: skipped'],
+  ...Object.fromEntries(Object.entries(PHOTO_PROBLEM).map(([k, l]) => [k, ['warn', `${l}: skipped`]])) };
 const updater = {
   mount(root, top, c) {
     const u = peopleTab.st.updating; this.root = root; this.top = top; this.client = c;
     top.innerHTML = `<button class="btn" id="uCancel">${ICON.x}Cancel update</button>`;
     $('#uCancel').onclick = () => { this.release(); peopleTab.st.updating = null; peopleTab.mount(root, top, c); };
     const ticked = tickedFiles(u).length, matched = ticked - u.plan.unusedFiles.length;
-    root.innerHTML = `<div class="stack" style="gap:20px"><div class="steps two">
+    root.innerHTML = `<div class="stack"><div class="steps two">
       <div class="card step ${u.rows.length ? 'done' : ''}"><span class="n">${u.rows.length ? '✓' : '1'}</span><h3>Upload a CSV of changes</h3>
         <div class="row"><a class="btn" href="/api/clients/${c.id}/people.csv" download>${ICON.download}Export people</a><button class="btn ${u.rows.length ? '' : 'primary'}" id="uCsvBtn">${ICON.upload}${u.rows.length ? 'Replace CSV' : 'Upload CSV'}</button><input type="file" id="uCsv" accept=".csv,text/csv" hidden></div>
         ${u.rows.length ? `<span class="st">${esc(u.csvName)}: ${plural(u.rows.length, 'person')}</span>` : ''}${u.warning ? `<span class="st warn">${esc(u.warning)}</span>` : ''}</div>
@@ -917,15 +1036,15 @@ const updater = {
     if (!entries.length && !unusedFiles.length) { box.innerHTML = `<div class="empty">${ICON.stack}<b>Nothing to review yet</b></div>`; return; }
     const ok = entries.filter(this.included), hasCsv = !!u.rows.length;   // the # column is the CSV row, so only with a CSV
     const show = (k, v) => fieldInfo(k).type === 'date' ? formatDate(v, 'DD/MM/YYYY') : (v || '');
-    const changes = (e) => [...Object.entries(e.changes).map(([k, v]) => `${esc(fieldLabel(k))}: ${esc(show(k, PERSON_FIELDS.includes(k) ? e.person[k] : (e.person.extra || {})[k])) || '—'} → ${esc(show(k, v))}`), ...(e.file ? [e.person.hasPhoto ? 'Replaces photo' : 'Adds photo'] : [])];
+    const changes = (e) => [...Object.entries(e.changes).map(([k, v]) => `${esc(fieldLabel(k))}: ${esc(show(k, PERSON_FIELDS.includes(k) ? e.person[k] : (e.person.extra || {})[k])) || '—'} → ${esc(show(k, v))}`), ...(e.file ? [e.person.hasPhoto ? 'Replaces photo' : 'Adds photo'] : []), ...(e.photoProblem ? [`${PHOTO_PROBLEM[e.photoProblem]}: photo left as it is`] : [])];
     const y = $('.tbl-wrap', box)?.scrollTop;
     box.innerHTML = `<div class="toolbar"><b>Review before updating</b><span class="sp"></span>
         <button class="btn primary lg" id="uGo" ${ok.length ? '' : 'disabled'}>${ICON.retry}Update ${plural(ok.length, 'person')}</button></div>
       ${entries.length ? `<div class="tbl-wrap" style="max-height:56vh"><table class="tbl"><thead><tr><th style="width:36px"><input type="checkbox" id="uAll" ${entries.filter(e => !e.problem).every(this.included) ? 'checked' : ''} aria-label="Select all"></th>${hasCsv ? '<th>#</th>' : ''}<th>Photo</th><th>First name</th><th>Last name</th><th>Changes</th><th>Photo file</th><th>Status</th></tr></thead>
       <tbody>${entries.map((e, i) => { const [k, l] = e.problem ? UPDATE_CHIP[e.problem] : ['ok', 'Ready'], inc = this.included(e), who = e.person || e.row; return `<tr data-i="${i}" class="${inc ? 'sel' : ''}"><td><input type="checkbox" data-inc ${inc ? 'checked' : ''} ${e.problem ? 'disabled' : ''} aria-label="Include"></td>${hasCsv ? `<td class="num muted">${e.row ? e.row.row : '—'}</td>` : ''}
-        <td>${thumbHtml(e.file, f => this.url(f))}</td><td class="nm">${esc(who.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(who.lastName) || '<span class="muted">—</span>'}</td>
-        <td class="muted" style="max-width:360px">${changes(e).join('<br>') || '—'}</td><td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.file?.name) || '—'}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><b>No one matched</b></div>`}
-      ${unusedFiles.length ? `<details class="unused"><summary>${plural(unusedFiles.length, 'photo')} matched nobody</summary><div>${unusedFiles.map(f => esc(f.name)).join(' · ')}</div></details>` : ''}`;
+        <td>${thumbHtml(e.file, f => this.url(f), u.enhance)}</td><td class="nm">${esc(who.firstName) || '<span class="muted">—</span>'}</td><td class="nm">${esc(who.lastName) || '<span class="muted">—</span>'}</td>
+        <td class="muted" style="max-width:360px">${changes(e).join('<br>') || '—'}</td><td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${photoNames(e.file, e.files)}">${photoNames(e.file, e.files)}</td><td><span class="chip ${k}">${l}</span></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><b>No one matched</b></div>`}
+      ${unusedFiles.length ? `<details class="unused"><summary>${plural(unusedFiles.length, 'photo')} not used</summary><div>${unusedFiles.map(f => esc(f.name)).join(' · ')}</div></details>` : ''}`;
     if (y) $('.tbl-wrap', box).scrollTop = y;
     $('#uAll') && ($('#uAll').onchange = e => { for (const x of entries) if (!x.problem) u.excluded[e.target.checked ? 'delete' : 'add'](x.person.id); this.table(); });
     $$('tbody tr', box).forEach(tr => { const e = entries[+tr.dataset.i]; $('[data-inc]', tr).onchange = ev => { u.excluded[ev.target.checked ? 'delete' : 'add'](e.person.id); this.table(); }; });
@@ -933,25 +1052,27 @@ const updater = {
     $('#uGo').onclick = () => this.run(ok);
   },
   async run(list) {
-    const c = this.client; let stop = false, done = 0; const failed = [];
-    const m = modal({ title: `Updating ${plural(list.length, 'person')}`, body: `<div class="stack" style="gap:10px"><div class="progress"><i id="uBar" style="width:0%"></i></div><div class="row"><b id="uMsg" class="num">Starting…</b><span class="sp"></span><span class="muted num" id="uPct">0%</span></div></div>`, actions: [{ label: 'Stop', kind: 'danger', onClick: () => { stop = true; return false; } }] });
-    m.el.dataset.locked = '1';
-    for (let i = 0; i < list.length; i++) {
-      if (stop) break;
+    const c = this.client, enhance = peopleTab.st.updating.enhance && 'needed', failed = [];
+    const box = progressBox(`Updating ${plural(list.length, 'person')}`, 'Updating', list.length), withPhoto = []; let done = 0, enhanced = 0;
+    for (let i = 0; i < list.length && !box.stopped; i++) {
       const { person: p, file, changes } = list[i];
+      await box.show(i, `${p.firstName} ${p.lastName}`, enhance ? `${plural(enhanced, 'photo')} enhanced so far` : '');
       try {
         const body = {};   // only what changes; the service keeps everything else
         for (const [k, v] of Object.entries(changes)) { if (PERSON_FIELDS.includes(k)) body[k] = v; else (body.extra ??= {})[k] = v; }
-        if (file) { const r = await shrinkPhoto(file); Object.assign(body, { photo: r.dataUrl, photoName: file.name, adj: { zoom: 1, ox: 0, oy: 0 } }); }   // a new photo starts at the template's fit
-        await api('PUT', `/api/people/${p.id}`, body); done++;
+        const r = file ? await shrinkPhoto(file, enhance) : null;
+        if (r) Object.assign(body, { photo: r.dataUrl, photoName: file.name, adj: { zoom: 1, ox: 0, oy: 0, face: r.face, photo: r.photo } });   // a new photo starts at the template's fit
+        const saved = await api('PUT', `/api/people/${p.id}`, body); done++;
+        if (r) withPhoto.push(saved);
+        if (r?.enhanced) enhanced++;
       } catch (e) { failed.push(`${`${p.firstName} ${p.lastName}`.trim()}: ${e.message}`); }
-      $('#uBar').style.width = `${((i + 1) / list.length) * 100}%`; $('#uMsg').textContent = `Updating ${i + 1} of ${list.length}: ${p.firstName} ${p.lastName}`; $('#uPct').textContent = `${Math.round(((i + 1) / list.length) * 100)}%`;
     }
-    m.close();
+    const stop = box.stopped; box.close();
     this.release(); peopleTab.st.updating = null;
     await peopleTab.mount(this.root, this.top, c);
-    if (done) toast(`Updated ${plural(done, 'person')}${stop ? ' (stopped early)' : ''}`, 'ok');
-    if (failed.length) modal({ title: done ? `Updated ${plural(done, 'person')}` : 'Nobody was updated', body: `<p class="hint">Not updated:</p><ul class="hint">${failed.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`, actions: [{ label: 'OK', kind: 'primary' }] });
+    if (done) toast(`Updated ${plural(done, 'person')}${enhanced ? `, ${plural(enhanced, 'photo')} enhanced` : ''}${stop ? ' (stopped early)' : ''}`, 'ok');
+    const rep = runReport('Not updated:', failed, withPhoto, S.designs.find(x => x.id === peopleTab.st.designId) || clientDefaultDesign(c));
+    if (rep.html) modal({ title: done ? `Updated ${plural(done, 'person')}` : 'Nobody was updated', body: rep.html, actions: [...rep.actions, { label: 'OK', kind: 'primary' }] });
   },
 };
 
@@ -966,7 +1087,7 @@ VIEWS.queue = {
   mount(el, top) {
     top.innerHTML = `<button class="btn" id="qClear">${ICON.check}Clear finished</button><span id="qPR"></span>`;
     $('#qClear').onclick = async () => { await api('POST', '/api/queue/clear-finished'); toast('Finished batches cleared'); };
-    el.innerHTML = '<div class="stack" style="gap:16px" id="qRoot"></div>';
+    el.innerHTML = '<div class="stack" id="qRoot"></div>';
     this.paint();
   },
   onQueue() { if (route() === 'queue') this.paint(); },
@@ -993,7 +1114,7 @@ VIEWS.queue = {
       const isOpen = openBatches.has(b.id) || (b.status === 'printing' && !openBatches.has('x' + b.id));
       const pct = k => `${((c[k] || 0) / Math.max(1, c.total)) * 100}%`;
       const [bk, bl] = BATCH_CHIP[b.status] || ['', b.status];
-      html += `<div class="card batch ${isOpen ? 'open' : ''}" data-b="${b.id}"><div class="batch-h" data-toggle>${ICON.chev}<div style="min-width:0"><div class="row" style="gap:10px"><h3>${esc(b.name)}</h3><span class="chip ${bk}">${bl}</span><span class="chip ${b.sides === 'both' || !b.sides ? '' : 'info'}">${b.hasBack ? SIDES[b.sides || 'both'] : 'Front only'}</span>${b.source === 'single' ? '<span class="chip">Single</span>' : ''}${b.backsBatchId ? '<span class="chip ok">Backs queued</span>' : ''}</div>
+      html += `<div class="card batch ${isOpen ? 'open' : ''}" data-b="${b.id}"><div class="batch-h" data-toggle>${ICON.chev}<div style="min-width:0"><div class="row sm"><h3>${esc(b.name)}</h3><span class="chip ${bk}">${bl}</span><span class="chip ${b.sides === 'both' || !b.sides ? '' : 'info'}">${b.hasBack ? SIDES[b.sides || 'both'] : 'Front only'}</span>${b.source === 'single' ? '<span class="chip">Single</span>' : ''}${b.backsBatchId ? '<span class="chip ok">Backs queued</span>' : ''}</div>
         <div class="meta">${b.clientName ? `${esc(b.clientName)} · ` : ''}${esc(b.designName)} · ${fmtDateTime(b.createdAt)} · ${c.printed || 0} of ${c.total} printed${c.failed ? ` · ${c.failed} failed` : ''}${c.interrupted ? ` · ${c.interrupted} to check` : ''}</div>
         <div class="pbar"><i class="p" style="width:${pct('printed')}"></i><i class="a" style="width:${(((c.printing || 0) + (c.sending || 0) + (c.attention || 0)) / Math.max(1, c.total)) * 100}%"></i><i class="f" style="width:${(((c.failed || 0) + (c.interrupted || 0)) / Math.max(1, c.total)) * 100}%"></i></div></div>
         <span class="num muted" style="font-weight:800">${Math.round(((c.printed || 0) / Math.max(1, c.total)) * 100)}%</span></div>
@@ -1038,12 +1159,12 @@ VIEWS.queue = {
 function printBacks(b) {
   const n = b.items.filter(i => i.status === 'printed').length;
   modal({ title: `Print backs for ${plural(n, 'card')}`, text: `"${b.name}"`,
-    body: `<div class="stack" style="gap:14px">
-      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--ink-2)">
+    body: `<div class="stack">
+      <ol class="olist">
         <li>Take the printed cards from the output hopper, keeping them in a stack.</li>
         <li>Flip the stack and load it into the input hopper.</li>
         <li>If the first back prints upside down, turn on <b>Rotate back side 180°</b> in Settings and reprint it.</li></ol>
-      <label class="check" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="pbRev"><i></i></label><div><b>Reverse order</b><span>If flipping the stack reversed the order of the cards.</span></div></label>
+      <label class="check bare"><label class="switch"><input type="checkbox" id="pbRev"><i></i></label><div><b>Reverse order</b><span>If flipping the stack reversed the order of the cards.</span></div></label>
       ${n < b.items.length ? `<div class="hint">${plural(b.items.length - n, 'card')} in this batch did not print and ${b.items.length - n === 1 ? 'is' : 'are'} left out.</div>` : ''}</div>`,
     actions: [{ label: 'Cancel' }, { label: 'Print backs', kind: 'primary', onClick: async (m) => {
       try { await api('POST', `/api/queue/batches/${b.id}/print-backs`, { reverse: $('#pbRev', m).checked }); toast(`Printing ${plural(n, 'back')}`, 'ok'); }
@@ -1055,7 +1176,7 @@ function printBacks(b) {
 // Card templates: library and visual builder
 // ======================================================================
 const builder = createBuilder({ S, api, toast, modal, confirmBox, esc, ICON, refreshLists: () => refreshLists(), $, $$, plural });
-const admin = createAdmin({ S, api, toast, modal, confirmBox, esc, ICON, $, $$, fmtDateTime, showLogin, showClosed, onConfig: () => setCustomFields(S.config.customFields) });
+const admin = createAdmin({ S, api, toast, modal, confirmBox, esc, ICON, $, $$, fmtDateTime, showLogin, showClosed, onConfig: () => { setCustomFields(S.config.customFields); setLineUpFaces(S.config.alignFaces); } });
 VIEWS.help = createHelp({ $, ICON, parts });
 const thumbsDraw = (root) => $$('[data-thumb]', root).forEach(c => { const d = S.designs.find(x => x.id === c.dataset.thumb); if (d) drawCard(c, d, c.dataset.side || 'front', {}, { samples: true }); });
 const fieldChips = (d) => designFields(d).map(f => `<span class="chip">${esc(fieldLabel(f))}</span>`).join(' ');
@@ -1063,9 +1184,9 @@ const fieldChips = (d) => designFields(d).map(f => `<span class="chip">${esc(fie
 function newTemplateModal({ clientId } = {}) {
   const c = clientId ? clientById(clientId) : null;
   modal({ title: c ? `New template for ${c.name}` : 'New card template',
-    body: `<div class="stack" style="gap:14px"><label class="f">Template name<input class="input" id="ntName" value="${c ? esc(c.name) + ' card' : ''}" placeholder="e.g. Contractor card"></label>
+    body: `<div class="stack"><label class="f">Template name<input class="input" id="ntName" value="${c ? esc(c.name) + ' card' : ''}" placeholder="e.g. Contractor card"></label>
       <label class="f">Start from<select class="input" id="ntFrom"><option value="">A blank card</option>${S.designs.map(d => `<option value="${esc(d.id)}" ${c && d.id === c.defaultDesignId ? 'selected' : ''}>A copy of ${esc(d.name)}</option>`).join('')}</select></label>
-      ${c ? `<label class="check" style="border:0;padding:0"><input type="checkbox" id="ntDef" checked style="width:18px;height:18px;accent-color:var(--brand)"><div><b>Make it ${esc(c.name)}'s default</b></div></label>` : ''}</div>`,
+      ${c ? `<label class="check bare"><input type="checkbox" id="ntDef" checked><div><b>Make it ${esc(c.name)}'s default</b></div></label>` : ''}</div>`,
     actions: [{ label: 'Cancel' }, { label: 'Create and open', kind: 'primary', onClick: async (m) => {
       try {
         const r = await api('POST', '/api/designs', { name: $('#ntName', m).value, from: $('#ntFrom', m).value || null, clientId: clientId || null, makeDefault: !!$('#ntDef', m)?.checked });
@@ -1084,14 +1205,14 @@ VIEWS.templates = {
   paint() {
     const el = this.el; if (!el || !document.body.contains(el)) return;
     if (!S.designs.length) {
-      el.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card templates yet</b><div class="row" style="justify-content:center;margin-top:16px"><button class="btn primary" id="tFirst">${ICON.plus}Create your first template</button></div></div></div>`;
+      el.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card templates yet</b><div class="row"><button class="btn primary" id="tFirst">${ICON.plus}Create your first template</button></div></div></div>`;
       $('#tFirst').onclick = () => newTemplateModal(); return;
     }
     el.innerHTML = `<div class="tgrid">${S.designs.map(d => {
       const users = S.clients.filter(c => (c.templateIds || []).includes(d.id));
       return `<a class="tcard card" href="#/templates/${d.id}"><div class="tcard-v"><canvas data-thumb="${d.id}"></canvas>${d.back?.enabled ? `<canvas data-thumb="${d.id}" data-side="back"></canvas>` : ''}</div>
         <div class="tcard-b"><b>${esc(d.name)}</b><span>${cardLabel(d.card)} · ${d.back?.enabled ? 'Front and back' : 'Front only'}</span><span>${users.length ? `Used by ${users.map(c => esc(c.name)).slice(0, 2).join(', ')}${users.length > 2 ? ` +${users.length - 2}` : ''}` : 'Not assigned'}</span>
-        <div class="row" style="gap:4px;margin-top:8px">${fieldChips(d) || '<span class="hint">No fields yet</span>'}</div></div></a>`; }).join('')}</div>`;
+        <div class="chips">${fieldChips(d) || '<span class="hint">No fields yet</span>'}</div></div></a>`; }).join('')}</div>`;
     thumbsDraw(el);
   },
   onDesigns() { if (parts()[0] === 'templates' && !parts()[1]) this.paint(); },
@@ -1101,7 +1222,7 @@ VIEWS.template = {
   title: () => S.designs.find(d => d.id === parts()[1])?.name || 'Card template',
   subtitle: '',
   mount(el, top) {
-    el.innerHTML = `<div class="stack" style="gap:14px"><a class="crumb" href="#/templates">${ICON.back}All card templates</a><div id="bRoot"></div></div>`;
+    el.innerHTML = `<div class="stack"><a class="crumb" href="#/templates">${ICON.back}All card templates</a><div id="bRoot"></div></div>`;
     builder.mount($('#bRoot'), top, parts()[1]);
   },
   leave() { builder.unmount(); },
@@ -1116,7 +1237,7 @@ function clientTemplatesTab(root, top, c) {
   $('#ctAssign').onclick = () => {
     const cur = new Set(c.templateIds || []);
     modal({ title: `Templates for ${c.name}`,
-      body: `<div class="stack" style="gap:0">${S.designs.map(d => `<label class="check"><input type="checkbox" data-d="${d.id}" ${cur.has(d.id) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--brand)"><div><b>${esc(d.name)}</b><span>${esc(designFields(d).map(fieldLabel).join(', ')) || 'No fields'}</span></div></label>`).join('')}</div>`,
+      body: `<div class="rows">${S.designs.map(d => `<label class="check"><input type="checkbox" data-d="${d.id}" ${cur.has(d.id) ? 'checked' : ''}><div><b>${esc(d.name)}</b><span>${esc(designFields(d).map(fieldLabel).join(', ')) || 'No fields'}</span></div></label>`).join('')}</div>`,
       actions: [{ label: 'Cancel' }, { label: 'Save', kind: 'primary', onClick: async (m) => {
         const ids = $$('[data-d]', m).filter(x => x.checked).map(x => x.dataset.d);
         if (!ids.length) { toast('Choose at least one template', 'err'); return false; }
@@ -1126,13 +1247,13 @@ function clientTemplatesTab(root, top, c) {
   };
   const list = clientDesigns(c.id);
   if (!list.length) {
-    root.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card template yet</b><div class="row" style="justify-content:center;margin-top:16px">${S.designs.length ? `<button class="btn" id="ctE1">${ICON.clients}Choose templates</button>` : ''}<button class="btn primary" id="ctE2">${ICON.plus}New template</button></div></div></div>`;
+    root.innerHTML = `<div class="card"><div class="empty">${ICON.card}<b>No card template yet</b><div class="row">${S.designs.length ? `<button class="btn" id="ctE1">${ICON.clients}Choose templates</button>` : ''}<button class="btn primary" id="ctE2">${ICON.plus}New template</button></div></div></div>`;
     $('#ctE1') && ($('#ctE1').onclick = () => $('#ctAssign').click()); $('#ctE2').onclick = () => $('#ctNew').click(); return;
   }
   root.innerHTML = `<div class="tgrid">${list.map(d => `<div class="tcard card"><div class="tcard-v"><canvas data-thumb="${d.id}"></canvas>${d.back?.enabled ? `<canvas data-thumb="${d.id}" data-side="back"></canvas>` : ''}</div>
-      <div class="tcard-b"><div class="row" style="gap:6px"><b>${esc(d.name)}</b>${c.defaultDesignId === d.id ? '<span class="chip info">Default</span>' : ''}</div><span>${cardLabel(d.card)} · ${d.back?.enabled ? 'Front and back' : 'Front only'}</span>
-      <div class="row" style="gap:4px;margin-top:8px">${fieldChips(d)}</div>
-      <div class="row" style="gap:6px;margin-top:12px"><a class="btn sm" href="#/templates/${d.id}">${ICON.edit}Edit</a>${c.defaultDesignId !== d.id ? `<button class="btn sm" data-def="${d.id}">${ICON.star}Make default</button>` : ''}${list.length > 1 ? `<button class="btn sm ghost danger" data-rm="${d.id}">Remove</button>` : ''}</div></div></div>`).join('')}</div>`;
+      <div class="tcard-b"><div class="row sm"><b>${esc(d.name)}</b>${c.defaultDesignId === d.id ? '<span class="chip info">Default</span>' : ''}</div><span>${cardLabel(d.card)} · ${d.back?.enabled ? 'Front and back' : 'Front only'}</span>
+      <div class="chips">${fieldChips(d)}</div>
+      <div class="row sm tcard-acts"><a class="btn sm" href="#/templates/${d.id}">${ICON.edit}Edit</a>${c.defaultDesignId !== d.id ? `<button class="btn sm" data-def="${d.id}">${ICON.star}Make default</button>` : ''}${list.length > 1 ? `<button class="btn sm ghost danger" data-rm="${d.id}">Remove</button>` : ''}</div></div></div>`).join('')}</div>`;
   thumbsDraw(root);
   $$('[data-def]', root).forEach(b => b.onclick = async () => { try { await api('PUT', `/api/clients/${c.id}`, { defaultDesignId: b.dataset.def }); await refreshLists(); navigate(); } catch (e) { toast(e.message, 'err'); } });
   $$('[data-rm]', root).forEach(b => b.onclick = async () => { try { await api('PUT', `/api/clients/${c.id}/templates`, { designIds: (c.templateIds || []).filter(x => x !== b.dataset.rm) }); await refreshLists(); navigate(); } catch (e) { toast(e.message, 'err'); } });
@@ -1171,7 +1292,7 @@ async function reprint(r) {
 function historyPanel(root, top, { clientId } = {}) {
   const fixed = clientId || ''; let lastRows = [];
   top.innerHTML = `<a class="btn" id="hCsv" href="/api/history.csv?${histQuery(fixed)}" download>${ICON.download}Export to CSV</a>`;
-  root.innerHTML = `<div class="stack" style="gap:16px"><div class="card"><div class="kpis" id="hKpis">${['Printed today', 'This week', 'This month', 'All time'].map(l => `<div class="kpi"><b>—</b><span>${l}</span></div>`).join('')}</div></div>
+  root.innerHTML = `<div class="stack"><div class="card"><div class="kpis" id="hKpis">${['Printed today', 'This week', 'This month', 'All time'].map(l => `<div class="kpi"><b>—</b><span>${l}</span></div>`).join('')}</div></div>
     <div class="card"><div class="toolbar">
       <label class="f" style="flex:1 1 200px">Search<input class="input" id="hQ" placeholder="Name, batch or operator" value="${esc(hist.q)}"></label>
       ${fixed ? '' : `<label class="f" style="flex:0 1 200px">Client<select class="input" id="hC"><option value="">All clients</option>${S.clients.map(c => `<option value="${c.id}" ${hist.clientId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`}
@@ -1189,7 +1310,7 @@ function historyPanel(root, top, { clientId } = {}) {
     cnt.textContent = `${total.toLocaleString()} record${total === 1 ? '' : 's'}${m.printed ? ` · ${m.printed.toLocaleString()} printed` : ''}${m.failed ? ` · ${m.failed} failed` : ''}`;
     $('#hBody').innerHTML = rows.length ? `<div class="tbl-wrap" style="max-height:60vh"><table class="tbl"><thead><tr><th>When</th>${fixed ? '' : '<th>Client</th>'}<th>Name</th><th>Result</th><th>Batch</th><th>Template</th><th>Ribbon</th><th>By</th><th></th></tr></thead><tbody>
       ${rows.map(r => { const [ck, cl] = hChip(r.status); return `<tr><td class="num muted" style="white-space:nowrap">${fmtDateTime(r.ts)}</td>${fixed ? '' : `<td>${r.clientId && clientById(r.clientId) ? `<a href="#/clients/${r.clientId}/people">${esc(r.clientName)}</a>` : esc(r.clientName) || '—'}</td>`}<td class="nm">${esc(r.firstName)} ${esc(r.lastName)}</td><td><span class="chip ${ck}">${cl}</span>${r.sides && r.sides !== 'both' ? ` <span class="chip info">${r.sides === 'front' ? 'Front' : 'Back'}</span>` : ''}${r.note ? `<div class="hint" style="max-width:38ch">${esc(r.note)}</div>` : ''}</td><td>${esc(r.batch)}</td><td class="muted">${esc(r.design)}</td><td class="muted num">${r.ribbon != null ? r.ribbon + '%' : '—'}</td><td class="muted">${esc(r.operator) || '—'}</td>
-        <td>${r.personId && ['printed', 'failed', 'check'].includes(r.status) && clientById(r.clientId) ? `<button class="btn sm" data-rp="${+r.id}" title="Print a new card with their current details">${ICON.retry}Reprint</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>${total > rows.length ? `<div class="hint" style="padding:12px 20px">Showing the latest ${rows.length.toLocaleString()} of ${total.toLocaleString()}.</div>` : ''}`
+        <td>${r.personId && ['printed', 'failed', 'check'].includes(r.status) && clientById(r.clientId) ? `<button class="btn sm" data-rp="${+r.id}" title="Print a new card with their current details">${ICON.retry}Reprint</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>${total > rows.length ? `<div class="hint tbl-foot">Showing the latest ${rows.length.toLocaleString()} of ${total.toLocaleString()}.</div>` : ''}`
       : `<div class="empty">${ICON.history}<b>${summary.all ? 'No matching cards' : 'Nothing printed yet'}</b></div>`;
   };
   $('#hBody').onclick = (e) => { const b = e.target.closest('[data-rp]'); if (b) reprint(lastRows.find(r => r.id === +b.dataset.rp)); };
@@ -1221,7 +1342,7 @@ async function logsPanel(root, top, kind) {
 VIEWS.history = {
   title: 'Print history', subtitle: '',
   mount(el, top) {
-    el.innerHTML = `<div class="stack" style="gap:16px"><div class="seg" id="hTabs" role="tablist">${[['prints', 'Print history'], ['printer', 'Printer events'], ...(isAdmin() ? [['service', 'Service log']] : [])].map(([k, l]) => `<button type="button" role="tab" data-s="${k}" class="${hist.tab === k ? 'on' : ''}" aria-selected="${hist.tab === k}">${l}</button>`).join('')}</div><div id="hRoot"></div></div>`;
+    el.innerHTML = `<div class="stack"><div class="seg" id="hTabs" role="tablist">${[['prints', 'Print history'], ['printer', 'Printer events'], ...(isAdmin() ? [['service', 'Service log']] : [])].map(([k, l]) => `<button type="button" role="tab" data-s="${k}" class="${hist.tab === k ? 'on' : ''}" aria-selected="${hist.tab === k}">${l}</button>`).join('')}</div><div id="hRoot"></div></div>`;
     bindSeg('hTabs', t => { hist.tab = t; this.mount(el, top); });
     if (hist.tab === 'service' && !isAdmin()) hist.tab = 'prints';
     if (hist.tab === 'prints') historyPanel($('#hRoot'), top, {}); else logsPanel($('#hRoot'), top, hist.tab);
@@ -1232,7 +1353,7 @@ VIEWS.history = {
 // View: Settings
 // ======================================================================
 const accountCard = (c, admin) => `        <div class="card"><div class="card-h"><div><h2>Sign-in and security</h2><p>Signed in as <b>${esc(S.user?.username || '')}</b></p></div></div><div class="card-b stack">
-          <form id="acForm" class="stack" style="gap:12px" autocomplete="off">
+          <form id="acForm" class="stack" autocomplete="off">
             <label class="f">Username<input class="input" id="acUser" value="${esc(S.user?.username || '')}" autocomplete="username"></label>
             <div class="grid2"><label class="f">New password<input class="input" type="password" id="acNew" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm new password<input class="input" type="password" id="acNew2" autocomplete="new-password"></label></div>
             <label class="f">Current password<input class="input" type="password" id="acCur" autocomplete="current-password"></label>
@@ -1243,10 +1364,10 @@ ${admin ? `          <label class="f">Sign out after this many minutes of inacti
 // One line under "Check for updates": the error, the available version (with Update now), or that this is the latest.
 const updateLine = (checked) => { const u = S.update || {}; return u.error ? esc(u.error) : u.available ? `Version ${esc(u.latest)} is available${u.installing ? ' · installing' : ' <button class="btn sm primary" id="updNow2">Update now</button>'}` : checked ? 'You have the latest version' : ''; };
 const aboutCard = () => `        <div class="card"><div class="card-h"><div><h2>About</h2></div></div><div class="card-b stack">
-          <div class="row" style="gap:12px;align-items:center"><span class="mark-lg">${document.querySelector('.brand .mark').outerHTML}</span><div><b style="font-size:16px;color:var(--brand-deep)">ID Card Printing Software Free</b><div class="hint">Version ${esc(S.version)}</div></div></div>
-          ${isAdmin() ? `<div class="row" style="gap:10px"><button class="btn sm" id="updCheck">${ICON.retry}Check for updates</button><span class="hint" id="updRes">${updateLine(false)}</span></div>` : ''}
+          <div class="row"><span class="mark-lg">${document.querySelector('.brand .mark').outerHTML}</span><div><b style="font-size:16px;color:var(--brand-deep)">ID Card Printing Software Free</b><div class="hint">Version ${esc(S.version)}</div></div></div>
+          ${isAdmin() ? `<div class="row"><button class="btn" id="updCheck">${ICON.retry}Check for updates</button><span class="hint" id="updRes">${updateLine(false)}</span></div>` : ''}
           <dl class="kv"><dt>Copyright</dt><dd>&copy; 2026 Josh McNabb. All rights reserved.</dd><dt>Licence</dt><dd>Free to use for the life of the software (licence version ${esc(S.license?.version || LICENSE_VERSION)})${S.license?.acceptedBy ? `, accepted by ${esc(S.license.acceptedBy)} on ${fmtDateTime(S.license.acceptedAt)}` : ''}</dd><dt>Warranty</dt><dd>None. Provided as is; see the licence.</dd></dl>
-          <div class="row" style="gap:8px"><button class="btn" data-act="licence">${ICON.doc}Licence</button><button class="btn" data-act="printers">${ICON.print}Supported printers</button><button class="btn" data-act="notices">${ICON.doc}Third-party notices</button></div></div></div>`;
+          <div class="row"><button class="btn" data-act="licence">${ICON.doc}Licence</button><button class="btn" data-act="printers">${ICON.print}Supported printers</button><button class="btn" data-act="notices">${ICON.doc}Third-party notices</button></div></div></div>`;
 
 VIEWS.settings = {
   title: 'Settings', subtitle: '',
@@ -1265,45 +1386,48 @@ VIEWS.settings = {
     const adjDefault = () => ADJ.every(([k]) => !adjVal(k)) && (!autoT() || autoOn());
     const fmtAdj = (k, v) => k === 'printOverprint' ? `${+v.toFixed(1)} mm` : v > 0 ? `+${v}` : `${v}`;
     const adjHtml = () => `<div class="adj" id="ptAdj"><div class="row"><b>Print adjustments</b><span class="sp"></span><button class="btn sm ghost" id="ptReset" ${adjDefault() ? 'disabled' : ''}>Reset</button></div>
-          ${autoT() ? `<label class="check" style="border:0;padding:0;align-items:center;gap:10px"><label class="switch"><input type="checkbox" id="ptAuto" ${autoOn() ? 'checked' : ''}><i></i></label><div><b>Automatic for ${esc(autoT().model)}</b></div></label>` : ''}
+          ${autoT() ? `<label class="check bare"><label class="switch"><input type="checkbox" id="ptAuto" ${autoOn() ? 'checked' : ''}><i></i></label><div><b>Automatic for ${esc(autoT().model)}</b></div></label>` : ''}
           <div class="grid2">${ADJ.map(([k, l, lo, hi, range = 'min="-50" max="50" step="1"']) => `<label class="f"><span class="val">${l}<span class="num muted" id="${k}V">${fmtAdj(k, adjShown(k))}</span></span><input type="range" id="${k}" ${range} list="ptZero" value="${adjShown(k)}" aria-label="${l}" aria-valuetext="${fmtAdj(k, adjShown(k))}" ${autoOn() && AUTO_KEY[k] ? 'disabled' : ''}><span class="ends"><span>${lo}</span><span>${hi}</span></span></label>`).join('')}</div>
           <datalist id="ptZero"><option value="0"></option></datalist></div>`;
     el.innerHTML = `<div class="settings">
       <div class="stack">
-        <div class="card"><div class="card-h"><div><h2>Printer</h2></div><button class="btn sm" id="cRefresh">${ICON.retry}Refresh list</button></div><div class="card-b stack">
+        <div class="card"><div class="card-h"><div><h2>Printer</h2></div><button class="btn sm" id="cRefresh">${ICON.retry}Refresh list</button></div><div class="card-b rows">
           <label class="f">Card printer<select class="input" id="cPrinter" ${c.simulate ? 'disabled' : ''}><option value="">Loading printers…</option></select></label>
           ${S.simulator ? sw('simulate', 'Simulator mode') : ''}
           ${c.simulate ? `<div class="grid2"><label class="f">Simulated seconds per card<input class="input" type="number" min="2" max="120" data-c="simSeconds" value="${c.simSeconds}"></label></div>` : ''}
-          ${!c.simulate && S.printer && S.printer.dpi ? `<span class="hint">Print resolution ${S.printer.dpi} dpi</span>` : ''}
+          ${!c.simulate && S.printer && S.printer.dpi ? `<div class="hint">Print resolution ${S.printer.dpi} dpi</div>` : ''}
           ${c.simulate ? '' : adjHtml()}
           <div class="row"><button class="btn" id="cTest">${ICON.print}Print a test card</button>${!c.simulate ? `<button class="btn" id="cPrefs">Printing preferences</button><button class="btn" id="cQueue">Windows print queue</button>` : ''}</div>
         </div></div>
-        <div class="card"><div class="card-h"><div><h2>Printing</h2></div></div><div class="card-b" style="padding-top:6px;padding-bottom:6px">
-          <div class="stack" style="gap:6px;padding:12px 0;border-bottom:1px solid var(--line-2)"><b>Card type</b>
+        <div class="card"><div class="card-h"><div><h2>Printing</h2></div></div><div class="card-b rows">
+          <div class="f"><span>Card type</span>
             <div class="seg" id="cCardSides" role="radiogroup" aria-label="Card type">${[['single', 'Single-sided'], ['dual', 'Dual-sided']].map(([k, l]) => `<button type="button" role="radio" data-s="${k}" aria-checked="${(c.cardSides || 'dual') === k}" class="${(c.cardSides || 'dual') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
-          ${dualCards() ? `<div class="stack" style="gap:6px;padding:12px 0;border-bottom:1px solid var(--line-2)"><b>How the back is printed</b>
-            <div class="seg" id="cBackMethod" role="radiogroup" aria-label="How the back is printed">${[['auto', 'Automatically (printer flips)'], ['manual', 'Manually (flip the cards)']].map(([k, l]) => `<button type="button" role="radio" data-s="${k}" aria-checked="${c.backMethod === k}" class="${c.backMethod === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-            ${noFlipper() && c.backMethod !== 'manual' ? `<div class="alert warning" style="margin-top:6px"><span style="color:var(--amber);width:20px;flex:none">${ICON.warn}</span><div><b>This printer reports no flipper module</b><span>Without a flipper it can't print both sides in one pass. Choose "Manually (flip the cards)".</span></div></div>` : ''}</div>` : ''}
+          ${dualCards() ? `<div class="f"><span>How the back is printed</span>
+            <div class="seg" id="cBackMethod" role="radiogroup" aria-label="How the back is printed">${[['auto', 'Automatically (printer flips)'], ['manual', 'Manually (flip the cards)']].map(([k, l]) => `<button type="button" role="radio" data-s="${k}" aria-checked="${c.backMethod === k}" class="${c.backMethod === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+            ${noFlipper() && c.backMethod !== 'manual' ? `<div><div class="alert warning"><span style="color:var(--amber);width:20px;flex:none">${ICON.warn}</span><div><b>This printer reports no flipper module</b><span>Without a flipper it can't print both sides in one pass. Choose "Manually (flip the cards)".</span></div></div></div>` : ''}` : ''}
           ${dualCards() ? sw('rotateBack', 'Rotate back side 180°') : ''}
           ${sw('autoStart', 'Start printing automatically')}
           ${sw('pauseOnError', 'Pause the queue on printer problems')}
-          <div class="grid2" style="padding:12px 0"><label class="f">Pause between cards (seconds)<input class="input" type="number" min="0" max="600" data-c="delayBetweenCards" value="${c.delayBetweenCards}"></label>
+          <div class="grid2"><label class="f">Pause between cards (seconds)<input class="input" type="number" min="0" max="600" data-c="delayBetweenCards" value="${c.delayBetweenCards}"></label>
           <label class="f">Flag a card as slow after (minutes)<input class="input" type="number" min="1" max="120" data-c="jobTimeoutMin" value="${c.jobTimeoutMin}"></label></div>
         </div></div>
-      </div>
+        <div class="card"><div class="card-h"><div><h2>Photos</h2></div></div><div class="card-b rows">
+          ${sw('enhancePhotos', 'Enhance photos that need it')}
+          ${sw('alignFaces', 'Line up faces on every card')}
+        </div></div>
         <div class="card" id="fdCard"></div>
       </div>
       <div class="stack">
         <div class="card" id="apCard"></div>
         <div class="card"><div class="card-h"><div><h2>Supplies</h2></div></div><div class="card-b stack">
-          <div id="cSup">${suppliesHtml(true) || '<span class="hint">No levels reported.</span>'}</div>
+          <div id="cSup" class="meters">${suppliesHtml(true) || '<span class="hint">No levels reported.</span>'}</div>
           ${reported('ribbon') || reported('film') ? `<div class="grid2">${reported('ribbon') ? `<label class="f">Warn when ribbon is at or below (%)<input class="input" type="number" min="0" max="90" data-c="ribbonLowPercent" value="${c.ribbonLowPercent ?? 10}"></label>` : ''}
           ${reported('film') ? `<label class="f">Warn when HDP film is at or below (%)<input class="input" type="number" min="0" max="90" data-c="filmLowPercent" value="${c.filmLowPercent ?? 10}"></label>` : ''}</div>` : ''}</div></div>
-        <div class="card"><div class="card-h"><div><h2>Operator & alerts</h2></div></div><div class="card-b" style="padding-top:6px">
-          <label class="f" style="padding:12px 0">Operator name<input class="input" data-c="operatorName" value="${esc(c.operatorName)}" placeholder="Shown in print history"></label>
+        <div class="card"><div class="card-h"><div><h2>Operator & alerts</h2></div></div><div class="card-b rows">
+          <label class="f">Operator name<input class="input" data-c="operatorName" value="${esc(c.operatorName)}" placeholder="Shown in print history"></label>
           ${sw('notifications', 'Desktop notifications')}
           ${sw('sound', 'Alert sounds')}
-          ${S.platform === 'win32' ? '' : '<button class="btn sm" id="cNotif" style="margin-top:6px">Allow notifications</button>'}
+          ${S.platform === 'win32' ? '' : '<div class="row"><button class="btn" id="cNotif">Allow notifications</button></div>'}
         </div></div>
 ${accountCard(c, true)}
         <div class="card" id="usCard"></div>
@@ -1396,7 +1520,7 @@ ${accountCard(c, true)}
 // ======================================================================
 function backupModal() {
   modal({ title: 'Download a backup', text: 'You will need this password to restore the backup.',
-    body: `<div class="stack" style="gap:12px"><label class="f">Backup password<input class="input" type="password" id="bkPw" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm backup password<input class="input" type="password" id="bkPw2" autocomplete="new-password"></label></div>`,
+    body: `<div class="stack"><label class="f">Backup password<input class="input" type="password" id="bkPw" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm backup password<input class="input" type="password" id="bkPw2" autocomplete="new-password"></label></div>`,
     actions: [{ label: 'Cancel' }, { label: 'Download backup', kind: 'primary', onClick: async (m) => {
       const pw = $('#bkPw', m).value;
       if (pw.length < 8) { toast('Use at least 8 characters', 'err'); return false; }
@@ -1416,7 +1540,7 @@ function backupModal() {
 }
 function restoreModal() {
   modal({ title: 'Restore from a backup', text: 'Everything on this PC (settings, clients, people, templates, the print queue, history and sign-in details) is replaced with the backup. You will then sign in with the details from the backup.',
-    body: `<div class="stack" style="gap:12px"><label class="f">Backup file<input class="input" type="file" id="rsFile" accept=".idcbak,.db" style="padding-top:8px"></label><label class="f">Backup password<input class="input" type="password" id="rsPw" autocomplete="off"></label></div>`,
+    body: `<div class="stack"><label class="f">Backup file<input class="input" type="file" id="rsFile" accept=".idcbak,.db"></label><label class="f">Backup password<input class="input" type="password" id="rsPw" autocomplete="off"></label></div>`,
     actions: [{ label: 'Cancel' }, { label: 'Replace with backup', kind: 'danger', onClick: async (m) => {
       const f = $('#rsFile', m).files[0]; const pw = $('#rsPw', m).value;
       if (!f) { toast('Choose the backup file', 'err'); return false; }
@@ -1478,14 +1602,14 @@ function appearanceCard(box) {
   box.innerHTML = `<div class="card-h"><div><h2>Appearance</h2></div></div>
     <div class="card-b stack">
       <div class="f"><span>Theme</span><div class="swatches">${Object.entries(THEMES).map(([k, v]) => `<button type="button" class="swatch ${t.preset === k ? 'on' : ''}" data-preset="${k}" title="${v.label}" aria-label="${v.label}" style="--sw:${v.primary}"><i></i><span>${v.label}</span></button>`).join('')}</div></div>
-      <div class="row" style="gap:16px"><label class="f" style="flex-direction:row;align-items:center;gap:10px">Main colour<input type="color" class="input" id="apPrimary" value="${t.primary || '#00529F'}"></label>
-        <label class="f" style="flex-direction:row;align-items:center;gap:10px">Heading colour<input type="color" class="input" id="apHeading" value="${t.heading || themeVars(t)['--brand-deep']}"></label>
-        <button class="btn sm ghost" id="apAuto" ${t.heading ? '' : 'disabled'}>Automatic heading colour</button></div>
+      <div class="row end"><label class="f">Main colour<input type="color" class="input" id="apPrimary" value="${t.primary || '#00529F'}"></label>
+        <label class="f">Heading colour<input type="color" class="input" id="apHeading" value="${t.heading || themeVars(t)['--brand-deep']}"></label>
+        <button class="btn ghost" id="apAuto" ${t.heading ? '' : 'disabled'}>Automatic heading colour</button></div>
       <div class="f"><span>Sidebar</span><div class="seg" id="apSide">${[['light', 'Light'], ['brand', 'Main colour']].map(([k, l]) => `<button type="button" data-s="${k}" class="${(t.sidebar || 'light') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="divider"></div>
       <label class="f">Company name<input class="input" id="apCo" value="${esc(S.config.companyName || '')}" placeholder="e.g. Example Company"></label>
       <div class="tpl"><div class="logo-prev">${b.logo ? `<img src="${b.logo}" alt="Company logo">` : '<span class="hint">No logo</span>'}</div>
-        <div class="row" style="gap:6px"><button class="btn sm" id="apLogo">${ICON.upload}${b.logo ? 'Change logo' : 'Upload logo'}</button>${b.logo ? '<button class="btn sm ghost danger" id="apLogoRm">Remove</button>' : ''}</div></div>
+        <div class="row"><button class="btn" id="apLogo">${ICON.upload}${b.logo ? 'Change logo' : 'Upload logo'}</button>${b.logo ? '<button class="btn ghost danger" id="apLogoRm">Remove</button>' : ''}</div></div>
       <input type="file" id="apFile" accept="image/png,image/jpeg,image/webp" hidden>
     </div>`;
   const save = async (patch, msg = 'Appearance saved') => {
@@ -1553,7 +1677,7 @@ function showLogin(message, ok) {
 function requirePasswordChange() {
   return new Promise(resolve => {
     const { el } = modal({ title: 'Choose your own password', text: 'The password you signed in with is temporary. Choose your own before you continue.',
-      body: `<div class="stack" style="gap:12px"><label class="f">New password<input class="input" type="password" id="npNew" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm new password<input class="input" type="password" id="npNew2" autocomplete="new-password"></label></div>`,
+      body: `<div class="stack"><label class="f">New password<input class="input" type="password" id="npNew" autocomplete="new-password" placeholder="At least 8 characters"></label><label class="f">Confirm new password<input class="input" type="password" id="npNew2" autocomplete="new-password"></label></div>`,
       actions: [
         { label: 'Sign out', onClick: async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {} showLogin(); resolve(false); } },
         { label: 'Save password', kind: 'primary', onClick: async (m) => {

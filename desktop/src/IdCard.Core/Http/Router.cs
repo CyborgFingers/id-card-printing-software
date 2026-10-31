@@ -51,7 +51,10 @@ internal sealed partial class Router
         [".png"] = "image/png", [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".webp"] = "image/webp", [".gif"] = "image/gif", [".svg"] = "image/svg+xml",
         [".ico"] = "image/x-icon", [".woff2"] = "font/woff2", [".json"] = "application/json", [".txt"] = "text/plain; charset=utf-8", [".wasm"] = "application/wasm",
     };
-    static readonly (string, string)[] SecurityHeaders = [("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer")];
+    // connect-src: the screens can only send requests to this service, so no script (a vendored library included) can send
+    // anything off the PC. The update check runs in the service, not the screens.
+    static readonly (string, string)[] SecurityHeaders = [("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer"),
+        ("Content-Security-Policy", "connect-src 'self' blob: data:")];
 
     readonly AppService _app;
     readonly List<Route> _routes = [];

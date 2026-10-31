@@ -60,6 +60,12 @@ const libheif = () => heifLib ??= Promise.all([script('libheif/libheif.js'), fet
     m = globalThis.libheif({ wasmBinary, onRuntimeInitialized: () => setTimeout(() => ok(m)), onAbort: () => fail(new Error('The HEIC reader could not start.')) });
   })).catch((e) => { heifLib = null; throw e; });
 const utif = () => tiffLib ??= script('utif/pako_inflate.min.js').then(() => script('utif/UTIF.js')).then(() => globalThis.UTIF).catch((e) => { tiffLib = null; throw e; });
+let picaLib = null;
+// Two workers at most, so a big import leaves the PC's other cores free.
+const pica = () => picaLib ??= script('pica/pica.min.js').then(() => globalThis.pica({ concurrency: 2 })).catch((e) => { picaLib = null; throw e; });
+/** Draws a picture smaller into `canvas` (at the canvas's size) with js/vendor/pica: sharper than the window's own
+ *  resizing (its default filter, mks2013, also sharpens what shrinking softens). */
+export const shrinkInto = async (img, canvas) => (await pica()).resize(img, canvas);
 const pixelsToBlob = (data, type) => { const c = document.createElement('canvas'); c.width = data.width; c.height = data.height; c.getContext('2d').putImageData(data, 0, 0); return new Promise((ok) => c.toBlob(ok, type, 0.95)); };
 
 async function heicToBlob(file) {
@@ -173,18 +179,64 @@ function roundRect(ctx, x, y, w, h, r) {
 // photo (minZoom) up to 4 times that starting size. A photo bigger than the frame moves until an edge meets the
 // frame; a smaller one moves anywhere inside it. A zoom within 3% of filling the frame or of the whole photo snaps to
 // it, so a photo that almost fills the frame never leaves a thin gap down one side.
-export function photoGeometry(img, box, adj = {}) {
+// Line up faces (Settings > Photos, `lineUp`: on for every card while setLineUpFaces says so) puts everyone's eyes the same distance apart (FACE.apart of the frame's height: the head is
+// about three quarters of it, as on a passport photo) and in the same place (centred, FACE.eyes of the way down), from
+// the eyes found when the photo was saved (adj.face: the point between them, as parts of the photo's width and height,
+// and the face's size, as a part of its width). A photo too tight around the face to put it there without leaving part of
+// the frame uncovered is first made a little bigger (the face up to FACE.grow times the size), which gives it room to
+// move; if that's not enough, it may leave up to FACE.slack of the frame uncovered on a side, which drawPhoto fills with
+// a soft wash of the photo's edge colours. Only an extreme close-up stops short. One with no face found (or saved before
+// faces were found) is fitted as the template says. The person's own zoom and move work on top; fx, fy are where the
+// face puts the photo before that move.
+export const FACE = { apart: 0.2, eyes: 0.45, grow: 1.15, slack: 0.3 };
+let lineUpFaces = false;
+export const setLineUpFaces = (on) => { lineUpFaces = !!on; };
+// What's wrong with a person's photo on a template, for the people list (Needs checking) and the report at the end of
+// an import or bulk update, from what was saved with the photo (adj.face, adj.photo: its size and whether it was still
+// poor): 'noPhoto'; while lining up faces, 'noFace' and 'turned' (not front on: it may not line up like the others) and
+// 'close' (too close-up for the face to be put in place); 'small' (shown more than 1.5 times its own pixels, so it
+// prints soft); 'poor' (still clearly dull, dark or grainy when saved). Photos saved before these were checked count
+// as fine.
+export const PHOTO_ISSUES = { noPhoto: 'No photo', noFace: 'Face not found', turned: 'Face turned away', close: 'Photo too close-up', small: 'Photo too small', poor: 'Poor photo' };
+export function photoIssues(p, design, lineUp = lineUpFaces) {
+  if (!p.hasPhoto) return ['noPhoto'];
+  const box = photoBox(design), a = p.adj || {}, size = a.photo, faceFit = lineUp && !!box, out = [];
+  if (faceFit && a.face === null) out.push('noFace');
+  if (faceFit && a.face?.turned) out.push('turned');
+  if (box && size?.w) {
+    const img = { naturalWidth: size.w, naturalHeight: size.h };
+    if (faceFit && a.face) {   // where the face alone puts it, before anyone moved it by hand: out of place, or bigger than it may grow
+      const g = photoGeometry(img, box, { face: a.face }, true), off = Math.hypot(g.dx + a.face.x * g.dw - (box.x + box.w / 2), g.dy + a.face.y * g.dh - (box.y + FACE.eyes * box.h));
+      if (off > 0.03 * box.h || a.face.d * g.dw > FACE.apart * box.h * FACE.grow * 1.02) out.push('close');
+    }
+    if (photoGeometry(img, box, a, lineUp).dw / size.w > 1.5) out.push('small');
+  }
+  if (size?.poor) out.push('poor');
+  return out;
+}
+// The smallest scale at which the face can be put in place with the whole frame covered.
+function coveredScale(img, box, face) {
+  const W = img.naturalWidth, H = img.naturalHeight, c = (FACE.eyes - 0.5) * box.h, across = 1 - Math.abs(1 - 2 * face.x);
+  return Math.max(box.w / W, box.h / H, across > 0 ? box.w / (W * across) : Infinity,
+    face.y > 0 ? (c + box.h / 2) / (H * face.y) : Infinity, face.y < 1 ? (box.h / 2 - c) / (H * (1 - face.y)) : Infinity);
+}
+export function photoGeometry(img, box, adj = {}, lineUp = lineUpFaces) {
   const fill = Math.max(box.w / img.naturalWidth, box.h / img.naturalHeight), whole = Math.min(box.w / img.naturalWidth, box.h / img.naturalHeight);
-  const base = box.fit === 'contain' ? whole : fill, minZoom = whole / base, fillZoom = fill / base;
+  const face = lineUp && adj.face?.d > 0 ? adj.face : null;
+  const exact = face && (FACE.apart * box.h) / (face.d * img.naturalWidth);
+  const base = face ? Math.max(fill * (1 - FACE.slack), Math.min(Math.max(exact, coveredScale(img, box, face)), exact * FACE.grow)) : box.fit === 'contain' ? whole : fill;
+  const minZoom = Math.min(whole, base) / base, fillZoom = fill / base;   // a lined-up face may start smaller than the whole photo
   const asked = Math.max(minZoom, Math.min(4, adj.zoom || 1));
   const near = [fillZoom, minZoom].sort((a, b) => Math.abs(asked - a) - Math.abs(asked - b))[0];
   const zoom = Math.abs(asked / near - 1) < 0.03 ? near : asked;
   const scale = base * zoom;
   const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-  const maxX = Math.abs(dw - box.w) / 2, maxY = Math.abs(dh - box.h) / 2;
-  const ox = Math.max(-maxX, Math.min(maxX, (adj.ox || 0) * box.w));
-  const oy = Math.max(-maxY, Math.min(maxY, (adj.oy || 0) * box.h));
-  return { dx: box.x + (box.w - dw) / 2 + ox, dy: box.y + (box.h - dh) / 2 + oy, dw, dh, maxX, maxY, minZoom };
+  const maxX = face ? Math.max(0, (dw - box.w) / 2 + FACE.slack * box.w) : Math.abs(dw - box.w) / 2;
+  const maxY = face ? Math.max(0, (dh - box.h) / 2 + FACE.slack * box.h) : Math.abs(dh - box.h) / 2;
+  const fx = face ? dw * (0.5 - face.x) : 0, fy = face ? dh * (0.5 - face.y) + (FACE.eyes - 0.5) * box.h : 0;
+  const ox = Math.max(-maxX, Math.min(maxX, fx + (adj.ox || 0) * box.w));
+  const oy = Math.max(-maxY, Math.min(maxY, fy + (adj.oy || 0) * box.h));
+  return { dx: box.x + (box.w - dw) / 2 + ox, dy: box.y + (box.h - dh) / 2 + oy, dw, dh, maxX, maxY, minZoom, fx, fy };
 }
 // A picture's Darkness, Contrast and Colour (-50 to 50, 0 = as it is): the template's background, logos and ID photos.
 // Shown on screen and printed, unlike Settings > Print adjustments, which only change printing. Darkness scales the
@@ -346,14 +398,45 @@ export function drawBarcode(ctx, e, value) {
   return null;
 }
 
+// Lining up a face can leave part of the frame uncovered (FACE.slack). It's filled with a soft wash of the colours along
+// the photo's edge (its outermost rows and columns stretched out, then heavily blurred: nothing from inside the photo,
+// so no part of a face is copied), and the photo's edge on that side fades into it, so there's no line. The wash
+// includes the photo itself and runs past the frame, so it doesn't fade at the frame's edge.
+function fillGaps(ctx, pic, e, g) {
+  const iw = pic.naturalWidth || pic.width, ih = pic.naturalHeight || pic.height, soft = 48, o = 3 * soft, fade = 40;
+  const l = g.dx > e.x + 0.5, r = g.dx + g.dw < e.x + e.w - 0.5, t = g.dy > e.y + 0.5, b = g.dy + g.dh < e.y + e.h - 0.5;
+  if (!l && !r && !t && !b) return false;
+  const x0 = e.x - o, x1 = e.x + e.w + o, y0 = e.y - o, y1 = e.y + e.h + o, px = g.dx + g.dw, py = g.dy + g.dh;
+  ctx.save(); ctx.filter = `blur(${soft}px)`;
+  ctx.drawImage(pic, g.dx, g.dy, g.dw, g.dh);
+  if (l) ctx.drawImage(pic, 0, 0, 1, ih, x0, g.dy, g.dx - x0, g.dh);
+  if (r) ctx.drawImage(pic, iw - 1, 0, 1, ih, px, g.dy, x1 - px, g.dh);
+  if (t) ctx.drawImage(pic, 0, 0, iw, 1, g.dx, y0, g.dw, g.dy - y0);
+  if (b) ctx.drawImage(pic, 0, ih - 1, iw, 1, g.dx, py, g.dw, y1 - py);
+  if (l && t) ctx.drawImage(pic, 0, 0, 1, 1, x0, y0, g.dx - x0, g.dy - y0);
+  if (r && t) ctx.drawImage(pic, iw - 1, 0, 1, 1, px, y0, x1 - px, g.dy - y0);
+  if (l && b) ctx.drawImage(pic, 0, ih - 1, 1, 1, x0, py, g.dx - x0, y1 - py);
+  if (r && b) ctx.drawImage(pic, iw - 1, ih - 1, 1, 1, px, py, x1 - px, y1 - py);
+  ctx.restore();
+  // The photo, its edge fading out on each side with a gap.
+  const c = document.createElement('canvas'); c.width = Math.ceil(g.dw); c.height = Math.ceil(g.dh);
+  const cg = c.getContext('2d'); cg.imageSmoothingQuality = 'high'; cg.drawImage(pic, 0, 0, g.dw, g.dh); cg.globalCompositeOperation = 'destination-out';
+  const ramp = (x, y, w, h, gx0, gy0, gx1, gy1) => { const gr = cg.createLinearGradient(gx0, gy0, gx1, gy1); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); cg.fillStyle = gr; cg.fillRect(x, y, w, h); };
+  if (l) ramp(0, 0, fade, c.height, 0, 0, fade, 0);
+  if (r) ramp(c.width - fade, 0, fade, c.height, c.width, 0, c.width - fade, 0);
+  if (t) ramp(0, 0, c.width, fade, 0, 0, 0, fade);
+  if (b) ramp(0, c.height - fade, c.width, fade, 0, c.height, 0, c.height - fade);
+  ctx.drawImage(c, g.dx, g.dy, g.dw, g.dh);
+  return true;
+}
 function drawPhoto(ctx, e, data, opts) {
   ctx.save();
   roundRect(ctx, e.x, e.y, e.w, e.h, e.radius); ctx.clip();
   ctx.fillStyle = e.bgColor || '#e9eef4'; ctx.fillRect(e.x, e.y, e.w, e.h);
   if (data.photo) {
-    const g = photoGeometry(data.photo, e, data.adj);
+    const g = photoGeometry(data.photo, e, data.adj), pic = toned(data.photo, e.darkness, e.contrast, e.colour);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(toned(data.photo, e.darkness, e.contrast, e.colour), g.dx, g.dy, g.dw, g.dh);
+    if (!(lineUpFaces && data.adj?.face?.d > 0 && fillGaps(ctx, pic, e, g))) ctx.drawImage(pic, g.dx, g.dy, g.dw, g.dh);
   } else if (opts.placeholder !== false) drawPlaceholder(ctx, e);
   ctx.restore();
   if (e.borderWidth > 0) { ctx.lineWidth = e.borderWidth; ctx.strokeStyle = e.borderColor || '#00529F'; roundRect(ctx, e.x + e.borderWidth / 2, e.y + e.borderWidth / 2, e.w - e.borderWidth, e.h - e.borderWidth, e.radius); ctx.stroke(); }

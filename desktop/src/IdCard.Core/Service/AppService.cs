@@ -183,6 +183,8 @@ public sealed partial class AppService : IDisposable
         ["printContrast"] = 0,
         ["printColour"] = 0,
         ["printOverprint"] = 0,        // millimetres, 0..2
+        ["enhancePhotos"] = false,     // Settings > Photos: new photos are enhanced when they need it (web/js/enhance.js)
+        ["alignFaces"] = false,        // Settings > Photos: Line up faces, every card's photo placed by its face (web/js/face.js)
         ["pauseOnError"] = true,
         ["autoStart"] = true,
         ["delayBetweenCards"] = 0,
@@ -203,7 +205,7 @@ public sealed partial class AppService : IDisposable
         ["customFields"] = new JsonArray(),     // changed only through /api/fields
         ["autoBackup"] = new JsonObject { ["enabled"] = false, ["folder"] = "", ["every"] = "daily", ["keep"] = 14 },   // changed only through /api/autobackup
     };
-    internal static readonly string[] ConfigKeys = ["printerName", "simulate", "simSeconds", "defaultSides", "cardSides", "backMethod", "backMethodChosen", "rotateBack", "printAuto", "printDarkness", "printContrast", "printColour", "printOverprint", "pauseOnError", "autoStart",
+    internal static readonly string[] ConfigKeys = ["printerName", "simulate", "simSeconds", "defaultSides", "cardSides", "backMethod", "backMethodChosen", "rotateBack", "printAuto", "printDarkness", "printContrast", "printColour", "printOverprint", "enhancePhotos", "alignFaces", "pauseOnError", "autoStart",
         "delayBetweenCards", "jobTimeoutMin", "pollMs", "ribbonLowPercent", "filmLowPercent", "operatorName", "notifications", "sound", "sessionIdleMin", "theme", "companyName", "logoAsset",
         "licenseAccepted", "port", "openBrowser", "customFields", "autoBackup"];
 

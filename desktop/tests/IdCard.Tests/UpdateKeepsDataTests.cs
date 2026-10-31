@@ -49,6 +49,14 @@ public sealed class UpdateKeepsDataTests : IDisposable
         Assert.Equal(data, Data(c));
     }
 
+    [Fact]
+    public void The_photo_settings_start_off_after_an_update()
+    {
+        using (var a = Start("3.0.14")) a.Locked(() => a.Db.Exec("DELETE FROM settings WHERE key IN ('enhancePhotos', 'alignFaces')"));   // as a PC updating from before they existed
+        using var b = Start("3.0.15");
+        b.Locked(() => { Assert.False(b.Config["enhancePhotos"]!.GetValue<bool>()); Assert.False(b.Config["alignFaces"]!.GetValue<bool>()); });   // photos keep coming out as they did
+    }
+
     sealed class NoPrinter : IPrinter
     {
         public event Action<PrinterRaw?>? StatusChanged { add { } remove { } }

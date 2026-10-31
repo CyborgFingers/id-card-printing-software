@@ -85,7 +85,7 @@ export function createHelp({ $, ICON, parts }) {
       const hits = search(q);
       live.textContent = hits.length ? `${hits.length} topic${hits.length === 1 ? ' matches' : 's match'}` : 'No topics match';
       body.innerHTML = hits.length ? `<div class="card help-hits">${hits.map(h => `<a class="help-hit" href="#/help/${h.id}"><b>${markHtml(h.tc, h.ft, ws)}</b><span>${snippet(h, ws)}</span></a>`).join('')}</div>`
-        : `<div class="card"><div class="empty">${IC.help}<b>No topics match “${esc(q.trim())}”</b>Check the spelling or try other words.<div class="row" style="justify-content:center;margin-top:16px"><button class="btn" id="helpAll">Show all topics</button></div></div></div>`;
+        : `<div class="card"><div class="empty">${IC.help}<b>No topics match “${esc(q.trim())}”</b>Check the spelling or try other words.<div class="row"><button class="btn" id="helpAll">Show all topics</button></div></div></div>`;
       $('#helpAll', body) && ($('#helpAll', body).onclick = clear);
       body.querySelectorAll('.help-hit').forEach(a => a.onclick = () => { filtering = false; focusTitle = true; });
       return;

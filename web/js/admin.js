@@ -12,11 +12,11 @@ export function createAdmin(ctx) {
     const have = new Set(list.map(f => f.label.toLowerCase()));
     const missing = PRESETS.filter(p => !have.has(p.label.toLowerCase()));
     card.innerHTML = `<div class="card-h"><div><h2>Person fields</h2></div><button class="btn sm" id="fdAdd">${ICON.plus}Add field</button></div>
-      <div class="card-b stack">${list.length ? list.map(f => `<div class="row" style="gap:8px;align-items:center"><b style="flex:1">${esc(f.label)}</b>
+      <div class="card-b rows">${list.length ? list.map(f => `<div class="row sm"><b style="flex:1">${esc(f.label)}</b>
           <span class="chip">${TYPES[f.type]}${f.type === 'auto' ? `: next ${esc(f.prefix || '')}${String(f.next).padStart(f.digits, '0')}` : ''}</span>${f.expiry ? '<span class="chip info">Card expiry</span>' : ''}
           <button class="btn sm" data-fe="${esc(f.key)}">${ICON.edit}Edit</button><button class="btn sm ghost danger" data-fx="${esc(f.key)}" aria-label="Delete ${esc(f.label)}">${ICON.trash}</button></div>`).join('')
-        : '<span class="hint">No extra fields yet.</span>'}
-        ${missing.length ? `<div class="row" style="gap:6px;flex-wrap:wrap"><span class="hint">Quick add:</span>${missing.map(p => `<button class="btn sm" data-fp="${PRESETS.indexOf(p)}">${esc(p.label)}</button>`).join('')}</div>` : ''}</div>`;
+        : '<div class="hint">No extra fields yet.</div>'}
+        ${missing.length ? `<div class="row sm"><span class="hint">Quick add:</span>${missing.map(p => `<button class="btn sm" data-fp="${PRESETS.indexOf(p)}">${esc(p.label)}</button>`).join('')}</div>` : ''}</div>`;
     const reload = () => fields(card);
     $('#fdAdd', card).onclick = () => fieldModal(null, reload);
     $$('[data-fe]', card).forEach(b => b.onclick = () => fieldModal(list.find(f => f.key === b.dataset.fe), reload));
@@ -30,11 +30,11 @@ export function createAdmin(ctx) {
   function fieldModal(f, done) {
     const type = f ? f.type : 'text';
     modal({ title: f ? `Edit "${f.label}"` : 'Add a person field',
-      body: `<div class="stack" style="gap:12px"><label class="f">Name<input class="input" id="fmLabel" value="${esc(f?.label || '')}" placeholder="e.g. Department"></label>
+      body: `<div class="stack"><label class="f">Name<input class="input" id="fmLabel" value="${esc(f?.label || '')}" placeholder="e.g. Department"></label>
         <label class="f">Type<select class="input" id="fmType" ${f ? 'disabled' : ''}>${Object.entries(TYPES).map(([k, l]) => `<option value="${k}" ${type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <div id="fmAuto" class="grid2"><label class="f">Prefix<input class="input" id="fmPrefix" value="${esc(f?.prefix || '')}" placeholder="e.g. C"></label><label class="f">Digits<input class="input" type="number" min="1" max="9" id="fmDigits" value="${+(f?.digits || 5)}"></label>
           <label class="f">Next number<input class="input" type="number" min="1" id="fmNext" value="${+(f?.next || 1)}"></label></div>
-        <label class="check" id="fmExp" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="fmExpiry" ${f?.expiry ? 'checked' : ''}><i></i></label><div><b>This is the card expiry date</b></div></label></div>`,
+        <label class="check bare" id="fmExp"><label class="switch"><input type="checkbox" id="fmExpiry" ${f?.expiry ? 'checked' : ''}><i></i></label><div><b>This is the card expiry date</b></div></label></div>`,
       onMount: (m) => { const sync = () => { const t = $('#fmType', m).value; $('#fmAuto', m).hidden = t !== 'auto'; $('#fmExp', m).hidden = t !== 'date'; }; $('#fmType', m).onchange = sync; sync(); setTimeout(() => $('#fmLabel', m).focus(), 30); },
       actions: [{ label: 'Cancel' }, { label: f ? 'Save' : 'Add field', kind: 'primary', onClick: async (m) => {
         const body = { label: $('#fmLabel', m).value, type: $('#fmType', m).value, prefix: $('#fmPrefix', m).value, digits: +$('#fmDigits', m).value, next: +$('#fmNext', m).value, expiry: $('#fmExpiry', m).checked };
@@ -49,14 +49,14 @@ export function createAdmin(ctx) {
     let list = [];
     try { list = await api('GET', '/api/users'); } catch (e) { card.innerHTML = `<div class="card-b"><span class="hint">${esc(e.message)}</span></div>`; return; }
     card.innerHTML = `<div class="card-h"><div><h2>Users</h2></div><button class="btn sm" id="usAdd">${ICON.plus}Add user</button></div>
-      <div class="card-b stack" style="gap:8px">${list.map(u => `<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:140px"><b>${esc(u.username)}</b>${u.username === S.user.username ? ' <span class="chip info">You</span>' : ''}${u.mustChangePassword ? ' <span class="chip warn">Must choose a password</span>' : ''}
+      <div class="card-b rows">${list.map(u => `<div class="row sm"><div style="flex:1;min-width:140px"><b>${esc(u.username)}</b>${u.username === S.user.username ? ' <span class="chip info">You</span>' : ''}${u.mustChangePassword ? ' <span class="chip warn">Must choose a password</span>' : ''}
           <div class="hint">${u.lastLoginAt ? `Last signed in ${esc(fmtDateTime(u.lastLoginAt))}` : 'Not signed in yet'}</div></div>
-          <select class="input" data-ur="${+u.id}" style="max-width:160px" aria-label="Role for ${esc(u.username)}"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option><option value="operator" ${u.role === 'operator' ? 'selected' : ''}>Operator</option></select>
-          <button class="btn sm" data-up="${+u.id}">Reset password</button>${u.username === S.user.username ? '' : `<button class="btn sm ghost danger" data-ux="${+u.id}" aria-label="Delete ${esc(u.username)}">${ICON.trash}</button>`}</div>`).join('')}</div>`;
+          <span class="row sm"><select class="input" data-ur="${+u.id}" style="width:160px" aria-label="Role for ${esc(u.username)}"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option><option value="operator" ${u.role === 'operator' ? 'selected' : ''}>Operator</option></select>
+          <button class="btn sm" data-up="${+u.id}">Reset password</button>${u.username === S.user.username ? '' : `<button class="btn sm ghost danger" data-ux="${+u.id}" aria-label="Delete ${esc(u.username)}">${ICON.trash}</button>`}</span></div>`).join('')}</div>`;
     const reload = () => users(card);
     const byId = (id) => list.find(u => u.id === +id);
     $('#usAdd', card).onclick = () => modal({ title: 'Add a user',
-      body: `<div class="stack" style="gap:12px"><label class="f">Username<input class="input" id="uaName" autocomplete="off"></label>
+      body: `<div class="stack"><label class="f">Username<input class="input" id="uaName" autocomplete="off"></label>
         <label class="f">Role<select class="input" id="uaRole"><option value="operator">Operator: add people and print</option><option value="admin">Administrator: everything</option></select></label>
         <label class="f">Temporary password<input class="input" id="uaPw" autocomplete="new-password" placeholder="At least 8 characters"></label></div>`,
       onMount: (m) => setTimeout(() => $('#uaName', m).focus(), 30),
@@ -87,7 +87,7 @@ export function createAdmin(ctx) {
     let a; try { a = await api('GET', '/api/autobackup'); } catch (e) { card.innerHTML = ''; return; }
     const last = a.last ? (a.last.ok ? `Last backup ${esc(fmtDateTime(a.last.at))}: ${esc(a.last.file)}` : `<span style="color:var(--err)">Last attempt ${esc(fmtDateTime(a.last.at))} failed: ${esc(a.last.error)}</span>`) : 'No automatic backup yet.';
     card.innerHTML = `<div class="card-h"><div><h2>Automatic backups</h2></div></div><div class="card-b stack">
-      <label class="check" style="border:0;padding:0"><label class="switch"><input type="checkbox" id="abOn" ${a.enabled ? 'checked' : ''}><i></i></label><div><b>Back up automatically</b><span>${last}</span></div></label>
+      <label class="check bare"><label class="switch"><input type="checkbox" id="abOn" ${a.enabled ? 'checked' : ''}><i></i></label><div><b>Back up automatically</b><span>${last}</span></div></label>
       <label class="f">Folder<input class="input" id="abDir" value="${esc(a.folder)}" placeholder="e.g. D:\\ID card backups or \\\\server\\share\\ID cards"></label>
       <div class="grid2"><label class="f">How often<select class="input" id="abEvery"><option value="daily" ${a.every === 'daily' ? 'selected' : ''}>Every day</option><option value="weekly" ${a.every === 'weekly' ? 'selected' : ''}>Every week</option></select></label>
         <label class="f">Keep the newest<input class="input" type="number" min="1" max="365" id="abKeep" value="${+a.keep}"></label></div>
